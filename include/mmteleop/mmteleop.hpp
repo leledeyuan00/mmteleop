@@ -41,7 +41,7 @@ private:
 
     // algorithm
     void get_hand_position(std::vector<Eigen::Vector3d> body_positions, Eigen::Vector3d& right_hand_position, Eigen::Vector3d& left_hand_position);
-
+    void get_nearest_id(int &current_id, std::vector<int> ids, bool dir);
 
     /* variables */
     // ros
@@ -54,6 +54,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr left_pose_pub_;
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr start_service_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr switch_id_service_;
 
     // tf
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -64,6 +65,12 @@ private:
 
     geometry_msgs::msg::PoseStamped right_start_pose_;
     geometry_msgs::msg::PoseStamped left_start_pose_;
+
+    geometry_msgs::msg::PoseStamped right_target_pose_, right_target_pose_tmp_;
+    geometry_msgs::msg::PoseStamped left_target_pose_, left_target_pose_tmp_;
+
+    Eigen::Vector3d right_hand_increment_;
+    Eigen::Vector3d left_hand_increment_;
     
 
     // std
@@ -73,15 +80,15 @@ private:
     rclcpp::Clock my_clock_;
 
     // Eigen
-    Eigen::Vector3d right_hand_position_;
-    Eigen::Vector3d left_hand_position_;
+    Eigen::Vector3d right_hand_position_, right_hand_position_last_;
+    Eigen::Vector3d left_hand_position_, left_hand_position_last_;
 
     Eigen::Vector3d right_hand_position_start_;
     Eigen::Vector3d left_hand_position_start_;
 
     // system
-    int recorded_id_;
-    std::vector<int> ids_;
+    int current_id_;
+    std::vector<int> recorded_id_;
 
     // bool
     bool tracking_ready_;
