@@ -157,16 +157,6 @@ void MMTeleop::body_arrary_callback(const visualization_msgs::msg::MarkerArray::
     {
         return;
     }
-    
-    // print all of the points with ID
-    // if (tracking_ready_)
-    // {
-    //     std::cout << "==============================" << std::endl;
-    //     for (size_t i = 0; i < size; i++)
-    //     {
-    //         std::cout << "ID : " << msg->markers[i].id << " , position : " << msg->markers[i].pose.position.x << " , " << msg->markers[i].pose.position.y << " , " << msg->markers[i].pose.position.z << std::endl;
-    //     }
-    // }
 
     std::vector<Eigen::Vector3d> marker_positions;
     for (size_t i = 0; i < MARKER_NUM; i++)
@@ -272,8 +262,6 @@ void MMTeleop::loop()
         {
             geometry_msgs::msg::PoseStamped right_target_pose_inc = right_start_pose_; // for getting the header
             geometry_msgs::msg::PoseStamped left_target_pose_inc = left_start_pose_; // for getting the header
-            // geometry_msgs::msg::PoseStamped right_target_pose = right_start_pose_;
-            // geometry_msgs::msg::PoseStamped left_target_pose = left_start_pose_;
 
             Eigen::Vector3d right_hand_increment_current = right_hand_position_ - right_hand_position_last_;
             Eigen::Vector3d left_hand_increment_current = left_hand_position_ - left_hand_position_last_;
@@ -295,24 +283,6 @@ void MMTeleop::loop()
             left_target_pose_.pose.position.x = left_target_pose_.pose.position.x + std::clamp(left_target_pose_tmp_.pose.position.x - left_target_pose_.pose.position.x, -velocity_threshold, velocity_threshold) * 0.1;
             left_target_pose_.pose.position.y = left_target_pose_.pose.position.y + std::clamp(left_target_pose_tmp_.pose.position.y - left_target_pose_.pose.position.y, -velocity_threshold, velocity_threshold) * 0.1;
             left_target_pose_.pose.position.z = left_target_pose_.pose.position.z + std::clamp(left_target_pose_tmp_.pose.position.z - left_target_pose_.pose.position.z, -velocity_threshold, velocity_threshold) * 0.1;
-
-            // right_target_pose_inc.pose.position.x = right_start_pose_.pose.position.x + right_hand_increment(0) ;
-            // right_target_pose_inc.pose.position.y = right_start_pose_.pose.position.y + right_hand_increment(1) ;
-            // right_target_pose_inc.pose.position.z = right_start_pose_.pose.position.z + right_hand_increment(2) ;
-
-            // left_target_pose_inc.pose.position.x = left_start_pose_.pose.position.x + left_hand_increment(0) ;
-            // left_target_pose_inc.pose.position.y = left_start_pose_.pose.position.y + left_hand_increment(1) ;
-            // left_target_pose_inc.pose.position.z = left_start_pose_.pose.position.z + left_hand_increment(2) ;
-
-            // right_target_pose.pose.position.x = right_current_pose_.pose.position.x + (right_target_pose_inc.pose.position.x - right_current_pose_.pose.position.x) * 0.1;
-            // right_target_pose.pose.position.y = right_current_pose_.pose.position.y + (right_target_pose_inc.pose.position.y - right_current_pose_.pose.position.y) * 0.1;
-            // right_target_pose.pose.position.z = right_current_pose_.pose.position.z + (right_target_pose_inc.pose.position.z - right_current_pose_.pose.position.z) * 0.1;
-
-            // left_target_pose.pose.position.x = left_current_pose_.pose.position.x + (left_target_pose_inc.pose.position.x - left_current_pose_.pose.position.x) * 0.1;
-            // left_target_pose.pose.position.y = left_current_pose_.pose.position.y + (left_target_pose_inc.pose.position.y - left_current_pose_.pose.position.y) * 0.1;
-            // left_target_pose.pose.position.z = left_current_pose_.pose.position.z + (left_target_pose_inc.pose.position.z - left_current_pose_.pose.position.z) * 0.1;
-
-
 
 
             right_hand_position_last_ = right_hand_position_;
