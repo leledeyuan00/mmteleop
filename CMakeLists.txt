@@ -44,8 +44,32 @@ target_include_directories(mmteleop PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_executable(bodytf_pub src/bodytf_pub.cpp)
+ament_target_dependencies(bodytf_pub ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(bodytf_pub PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+add_executable(hri_safety src/hri_safety.cpp)
+ament_target_dependencies(hri_safety ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(hri_safety PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+add_executable(hri_cover_plate src/hri_cover_plate.cpp)
+ament_target_dependencies(hri_cover_plate ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(hri_cover_plate PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 install(TARGETS
   mmteleop
+  bodytf_pub
+  hri_safety
+  hri_cover_plate
   DESTINATION lib/${PROJECT_NAME}
 )
 

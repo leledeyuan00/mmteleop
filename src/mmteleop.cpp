@@ -68,6 +68,8 @@ void MMTeleop::ros_init()
                 left_hand_position_start_ = left_hand_position_;
                 right_hand_position_last_ = right_hand_position_;
                 left_hand_position_last_ = left_hand_position_;
+                right_target_pose_tmp_ = right_target_pose_;
+                left_target_pose_tmp_ = left_target_pose_;
             }
             else
             {
@@ -235,14 +237,15 @@ void MMTeleop::get_hand_position(std::vector<Eigen::Vector3d> body_positions, Ei
     tf_broadcaster_->sendTransform(neck_transform); // Publish the neck transform for visualization in rviz
 
     // Get the hand position
+    Eigen::Vector3d right_hand_position_temp, left_hand_position_temp;
     right_hand_position =  neck_rotation_matrix.inverse() * (body_positions[0] - neck_middle_position);
     left_hand_position =  neck_rotation_matrix.inverse() * (body_positions[1] - neck_middle_position);
 
     // low pass filter
     for (size_t i = 0; i < 3; i++)
     {
-        right_hand_position(i) = filters::exponentialSmoothing(right_hand_position(i), right_hand_position_(i), 0.1);  
-        left_hand_position(i) = filters::exponentialSmoothing((i), left_hand_position_(i), 0.1); 
+        right_hand_position(i) = filters::exponentialSmoothing(right_hand_position_temp(i), right_hand_position(i), 0.02);  
+        left_hand_position(i) = filters::exponentialSmoothing(left_hand_position_temp(i), left_hand_position(i), 0.02); 
     }
 }
 
@@ -275,7 +278,7 @@ void MMTeleop::loop()
             left_target_pose_tmp_.pose.position.z = left_target_pose_tmp_.pose.position.z + left_hand_increment_current(2);
 
 
-            double velocity_threshold = 0.01;
+            double velocity_threshold = 0.005;
             right_target_pose_.pose.position.x = right_target_pose_.pose.position.x + std::clamp(right_target_pose_tmp_.pose.position.x - right_target_pose_.pose.position.x, -velocity_threshold, velocity_threshold) * 0.1;
             right_target_pose_.pose.position.y = right_target_pose_.pose.position.y + std::clamp(right_target_pose_tmp_.pose.position.y - right_target_pose_.pose.position.y, -velocity_threshold, velocity_threshold) * 0.1;
             right_target_pose_.pose.position.z = right_target_pose_.pose.position.z + std::clamp(right_target_pose_tmp_.pose.position.z - right_target_pose_.pose.position.z, -velocity_threshold, velocity_threshold) * 0.1;
