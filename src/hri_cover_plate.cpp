@@ -145,6 +145,20 @@ void hri_safety::robot_update()
     body_left_hand_ = tf2::transformToEigen(left_hand_transform);
 }
 
+void hri_safety::emergency_check()
+{
+    Eigen::Vector3d right_wrench = Eigen::Vector3d(right_wrench_msg_.wrench.force.x, right_wrench_msg_.wrench.force.y, right_wrench_msg_.wrench.force.z) - right_start_wrench_;
+    Eigen::Vector3d left_wrench = Eigen::Vector3d(left_wrench_msg_.wrench.force.x, left_wrench_msg_.wrench.force.y, left_wrench_msg_.wrench.force.z) - left_start_wrench_;
+
+    double emergency_stop_force = 20.0;
+
+    if (right_wrench.norm() > emergency_stop_force || left_wrench.norm() > emergency_stop_force)
+    {
+        state_ = STATE::STOP;
+        RCLCPP_INFO(this->get_logger(),"Emergency stop");
+    }
+}
+
 void hri_safety::loop()
 {
     rclcpp::Rate loop_rate(100);
@@ -159,6 +173,7 @@ void hri_safety::loop()
     while (rclcpp::ok())
     {
         robot_update();
+        emergency_check();
 
         double current_duration = (ros_clock_.now() - last_time_).seconds();
 
@@ -224,38 +239,43 @@ void hri_safety::loop()
                         RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
                     }
                     break;
-                }            
+                }      
+            case STATE::STOP:
+                {
+                    break;
+                }      
             default:
                 break;
             }
 
-
-            if (state_ != STATE::DRAGGING)
+            if (state_ != STATE::STOP)
             {
-                right_target_pose_msg_.pose.position.x = right_target_pose_msg_.pose.position.x + current_speed * current_duration;
-                left_target_pose_msg_.pose.position.x = left_target_pose_msg_.pose.position.x + current_speed * current_duration;
+                if (state_ != STATE::DRAGGING)
+                {
+                    right_target_pose_msg_.pose.position.x = right_target_pose_msg_.pose.position.x + current_speed * current_duration;
+                    left_target_pose_msg_.pose.position.x = left_target_pose_msg_.pose.position.x + current_speed * current_duration;
+                }
+                else
+                {
+                    right_target_pose_msg_ = right_current_pose_msg_;
+                    left_target_pose_msg_ = left_current_pose_msg_;
+                }
+
+                right_target_pose_msg_.header.stamp = ros_clock_.now();
+                left_target_pose_msg_.header.stamp = ros_clock_.now();
+
+                if (right_current_pose_msg_.pose.position.x > target_x)
+                {
+                    RCLCPP_INFO(this->get_logger(),"Reach the target position");
+                    data_file_.close();
+                    break;
+                }            
+
+                right_pose_pub_->publish(right_target_pose_msg_);
+                left_pose_pub_->publish(left_target_pose_msg_);
+
+                last_time_ = ros_clock_.now();
             }
-            else
-            {
-                right_target_pose_msg_ = right_current_pose_msg_;
-                left_target_pose_msg_ = left_current_pose_msg_;
-            }
-
-            right_target_pose_msg_.header.stamp = ros_clock_.now();
-            left_target_pose_msg_.header.stamp = ros_clock_.now();
-
-            if (right_current_pose_msg_.pose.position.x > target_x)
-            {
-                RCLCPP_INFO(this->get_logger(),"Reach the target position");
-                data_file_.close();
-                break;
-            }            
-
-            right_pose_pub_->publish(right_target_pose_msg_);
-            left_pose_pub_->publish(left_target_pose_msg_);
-
-            last_time_ = ros_clock_.now();
-
             // record data
             data_file_ << (ros_clock_.now() - start_time_).seconds() << " " << (int)(state_) << " " << hand_distance << " " << right_current_pose_msg_.pose.position.x << " " << right_current_pose_msg_.pose.position.y << " " << right_current_pose_msg_.pose.position.z << " " << left_current_pose_msg_.pose.position.x << " " << left_current_pose_msg_.pose.position.y << " " << left_current_pose_msg_.pose.position.z << " " << right_wrench_msg_.wrench.force.x << " " << right_wrench_msg_.wrench.force.y << " " << right_wrench_msg_.wrench.force.z << " " << left_wrench_msg_.wrench.force.x << " " << left_wrench_msg_.wrench.force.y << " " << left_wrench_msg_.wrench.force.z << std::endl;
             loop_rate.sleep();

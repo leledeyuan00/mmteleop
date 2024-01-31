@@ -35,6 +35,7 @@ enum class STATE : uint8_t
     SLOW = 0,
     FAST = 1,
     DRAGGING = 2,
+    STOP = 3,
 };
 
 class hri_safety : public rclcpp::Node
@@ -50,6 +51,7 @@ private:
 
     void robot_update();
     void loop();
+    void emergency_check();
 
 
     // ros time
