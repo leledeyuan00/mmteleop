@@ -31,6 +31,9 @@ void hri_safety::ros_init()
     left_gripper_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
         "/L_gripper_forward_position_controller/commands", rclcpp::SystemDefaultsQoS()
     );
+    state_pub_ = this->create_publisher<std_msgs::msg::Int16>(
+        "/hri_safety/state", rclcpp::SystemDefaultsQoS()
+    );
 
     // sub
     right_current_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
