@@ -71,7 +71,7 @@ void hri_safety::ros_init()
 
     ros_clock_ = rclcpp::Clock(RCL_ROS_TIME); 
 
-    state_ = STATE::FAST;
+    state_ = STATE::AUTO;
     slow2fast_count_ = 0;
 
     // thread
@@ -150,7 +150,7 @@ void hri_safety::loop()
                         if (slow2fast_count_ > 5)
                         {
                             slow2fast_count_ = 0;
-                            state_ = STATE::FAST;
+                            state_ = STATE::AUTO;
                             current_duration = fast_duration;
                             moving_phi = moving_phase;
                             start_time_ = ros_clock_.now();
@@ -163,7 +163,7 @@ void hri_safety::loop()
                     }
                     break;
                 }
-            case STATE::FAST:
+            case STATE::AUTO:
                 {
                     if (hand_distance < 0.1)
                     {
