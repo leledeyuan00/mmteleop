@@ -77,23 +77,9 @@ void hri_safety::ros_init()
     );
 
     // srv
-    ready2slow_srv_ = this->create_service<std_srvs::srv::Trigger>(
+    go2dragging_srv_ = this->create_service<std_srvs::srv::Trigger>(
         "/hri_safety/go2dragging", 
-        std::bind([&](hri_safety* hri_safety, const std_srvs::srv::Trigger::Request::SharedPtr request, const std_srvs::srv::Trigger::Response::SharedPtr response) {
-            if (state_ != STATE::READY)
-            {
-                response->success = false;
-                response->message = "Not in ready state";
-                return response;
-            }
-            else
-            {
-                ready2slow_ = true;
-                response->success = true;
-                response->message = "Get ready to slow mode";
-                return response;
-            }
-        }, this, std::placeholders::_1, std::placeholders::_2)
+        std::bind( &hri_safety::go2dragging_callback, this, std::placeholders::_1, std::placeholders::_2)
     );
 
     // init variables
@@ -116,6 +102,25 @@ void hri_safety::ros_init()
 
     // thread
     control_loop_thread_ = std::thread(&hri_safety::loop, this);
+}
+
+void hri_safety::go2dragging_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                      std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+{
+    req.get();
+    if (state_ != STATE::READY)
+    {
+        res->success = false;
+        res->message = "Not in ready state";
+        return;
+    }
+    else
+    {
+        ready2slow_ = true;
+        res->success = true;
+        res->message = "Get ready to slow mode";
+        return;
+    }
 }
 
 void hri_safety::record_data_init()
@@ -181,13 +186,13 @@ void hri_safety::emergency_check()
 
 void hri_safety::state_switch(STATE &state)
 {
-    switch (state_)
+    switch (state)
             {
             case STATE::AUTO:
             {
                 if (min_hand_distance_ < 0.2)
                 {
-                    state_ = STATE::SLOW;
+                    state = STATE::SLOW;
                     right_start_wrench_ << 0.0, 0.0, right_wrench_msg_.wrench.force.z;
                     left_start_wrench_ << 0.0, 0.0, left_wrench_msg_.wrench.force.z;
                     RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
@@ -202,7 +207,7 @@ void hri_safety::state_switch(STATE &state)
                     if (slow2fast_count_ > 10)
                     {
                         slow2fast_count_ = 0;
-                        state_ = STATE::AUTO;
+                        state = STATE::AUTO;
                         RCLCPP_INFO(this->get_logger(),"Switch to AUTO mode");
                         break;
                     }
@@ -211,7 +216,7 @@ void hri_safety::state_switch(STATE &state)
                 if (ready2slow_)
                 {
                     ready2slow_ = false;
-                    state_ = STATE::SLOW;
+                    state = STATE::SLOW;
                     RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
                 }
                 break;
@@ -224,7 +229,7 @@ void hri_safety::state_switch(STATE &state)
                         if (slow2fast_count_ > 10)
                         {
                             slow2fast_count_ = 0;
-                            state_ = STATE::AUTO;
+                            state = STATE::AUTO;
                             RCLCPP_INFO(this->get_logger(),"Switch to AUTO mode");
                             break;
                         }
@@ -232,7 +237,7 @@ void hri_safety::state_switch(STATE &state)
 
                     if (max_force_ > 5.)
                     {
-                        state_ = STATE::DRAGGING;
+                        state = STATE::DRAGGING;
                         RCLCPP_INFO(this->get_logger(),"Switch to dragging mode");
                     }
                     break;
@@ -241,7 +246,7 @@ void hri_safety::state_switch(STATE &state)
                 {
                     if (min_hand_distance_ >= 0.2 && ( max_force_ < 5.))
                     {
-                        state_ = STATE::SLOW;
+                        state = STATE::SLOW;
                         RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
                     }
                     break;

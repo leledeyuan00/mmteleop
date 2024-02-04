@@ -18,7 +18,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_msgs/msg/tf_message.hpp>
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 // low pass filter
 #include <control_toolbox/control_toolbox/filters.hpp>
@@ -50,12 +50,15 @@ public:
 private:
     // ros
     void ros_init();
+    void go2dragging_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                              std::shared_ptr<std_srvs::srv::Trigger::Response> res);
     void record_data_init(void);
 
     void robot_update();
     void loop();
     void emergency_check();
     void state_switch(STATE &state);
+    
 
 
     // ros time
@@ -78,7 +81,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr left_wrench_sub_;
 
     // srv
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr ready2slow_srv_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr go2dragging_srv_;
 
 
     // tf   

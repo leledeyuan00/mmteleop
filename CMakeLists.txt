@@ -65,11 +65,20 @@ target_include_directories(hri_cover_plate PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_executable(hri_system src/hri_system.cpp)
+ament_target_dependencies(hri_system ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(hri_system PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+
 install(TARGETS
   mmteleop
   bodytf_pub
   hri_safety
   hri_cover_plate
+  hri_system
   DESTINATION lib/${PROJECT_NAME}
 )
 

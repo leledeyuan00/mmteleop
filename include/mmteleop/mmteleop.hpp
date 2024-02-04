@@ -18,7 +18,7 @@
 #include <std_srvs/srv/set_bool.hpp>
 
 #include <tf2_ros/transform_broadcaster.h>
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 // low pass filter
 #include <control_toolbox/control_toolbox/filters.hpp>
