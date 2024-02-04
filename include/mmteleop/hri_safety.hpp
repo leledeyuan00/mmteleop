@@ -12,6 +12,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+#include <std_msgs/msg/int16.hpp>
 
 // tf sub
 #include <tf2_ros/transform_listener.h>
@@ -27,15 +28,17 @@
 
 // std srv
 #include <std_srvs/srv/set_bool.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <std_msgs/msg/float64_multi_array.hpp>
 
 enum class STATE : uint8_t
 {
-    SLOW = 0,
-    FAST = 1,
-    DRAGGING = 2,
-    STOP = 3,
+    AUTO = 0,
+    READY = 1,
+    SLOW = 2,
+    DRAGGING = 3,
+    STOP = 4,
 };
 
 class hri_safety : public rclcpp::Node
@@ -52,6 +55,7 @@ private:
     void robot_update();
     void loop();
     void emergency_check();
+    void state_switch(STATE &state);
 
 
     // ros time
@@ -65,12 +69,17 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr left_pose_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr right_gripper_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr left_gripper_pub_;
+    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr state_pub_;
 
     // sub
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr right_current_pose_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr left_current_pose_sub_;
     rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr right_wrench_sub_;
     rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr left_wrench_sub_;
+
+    // srv
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr ready2slow_srv_;
+
 
     // tf   
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
@@ -105,6 +114,10 @@ private:
     Eigen::Isometry3d body_right_hand_;
     Eigen::Isometry3d body_left_hand_;
 
+    // for system states
+    double min_hand_distance_;
+    double max_force_;
+
     // bool
     bool initialized_r_;
     bool initialized_l_;
@@ -112,6 +125,8 @@ private:
     // state
     STATE state_; // 0: slow, 1: fast
     uint8_t slow2fast_count_;
+
+    bool ready2slow_ = false;
 
 
     // recording the data to txt file
