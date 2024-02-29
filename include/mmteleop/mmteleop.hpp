@@ -16,6 +16,7 @@
 #include <eigen3/Eigen/Dense>
 
 #include <std_srvs/srv/set_bool.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -38,6 +39,7 @@ private:
     // ros
     void ros_init();
     void body_arrary_callback(const visualization_msgs::msg::MarkerArray::SharedPtr msg);
+    void reset_body_index_callback(const std_srvs::srv::Trigger::Request::SharedPtr request, std_srvs::srv::Trigger::Response::SharedPtr response);
 
     // algorithm
     void get_hand_position(std::vector<Eigen::Vector3d> body_positions, Eigen::Vector3d& right_hand_position, Eigen::Vector3d& left_hand_position);
@@ -55,6 +57,8 @@ private:
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr start_service_;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr switch_id_service_;
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_body_index_service_;
 
     // tf
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
