@@ -12,7 +12,7 @@ void MMTeleop::ros_init()
     tracking_ready_ = false;
 
     body_tracking_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
-        "/body_tracking_data", rclcpp::SystemDefaultsQoS(),
+        "/track/body_tracking_data", rclcpp::SystemDefaultsQoS(),
         std::bind(&MMTeleop::body_arrary_callback, this, std::placeholders::_1)
     );
 
