@@ -107,6 +107,24 @@ void MMTeleop::ros_init()
         }
     );
 
+	reset_body_index_service_ = this->create_service<std_srvs::srv::Trigger>(
+        "/reset_body_index", 
+        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response) -> void
+        {
+            if (tracking_ready_)
+            {
+                response->success = false;
+                response->message = "Please stop tracking first";
+                RCLCPP_WARN(this->get_logger(), "Please stop tracking first");
+                return;
+            }
+            RCLCPP_INFO(this->get_logger(), "Current id size: %d", recorded_id_.size());
+            recorded_id_.clear();
+            response->success = true;
+            response->message = "Reset id success";
+        }
+    );
+
     tf_broadcaster_.reset(new tf2_ros::TransformBroadcaster(this));
 
 }
