@@ -110,6 +110,7 @@ void hri_safety::ros_init()
 void hri_safety::go2dragging_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                       std::shared_ptr<std_srvs::srv::Trigger::Response> res)
 {
+    RCLCPP_INFO(this->get_logger(),"Get go2dragging service");
     req.get();
     if (state_ != STATE::READY)
     {
@@ -195,10 +196,10 @@ void hri_safety::state_switch(STATE &state)
             {
                 if (min_hand_distance_ < 0.2)
                 {
-                    state = STATE::SLOW;
+                    state = STATE::READY;
                     right_start_wrench_ << 0.0, 0.0, right_wrench_msg_.wrench.force.z;
                     left_start_wrench_ << 0.0, 0.0, left_wrench_msg_.wrench.force.z;
-                    RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
+                    RCLCPP_INFO(this->get_logger(),"Switch to READY mode");
                 }
                 break;
             }
@@ -242,6 +243,30 @@ void hri_safety::state_switch(STATE &state)
                     {
                         state = STATE::DRAGGING;
                         RCLCPP_INFO(this->get_logger(),"Switch to dragging mode");
+
+                        // Changing the parameter for stiffness
+                        rclcpp::Node::SharedPtr temp_node = std::make_shared<rclcpp::Node>("temp_node");
+                        auto client_l = std::make_shared<rclcpp::SyncParametersClient>(temp_node, "/left/cartesian_compliance_controller");
+                        auto client_r = std::make_shared<rclcpp::SyncParametersClient>(temp_node, "/right/cartesian_compliance_controller");
+                        RCLCPP_INFO(this->get_logger(), "Waiting for global parameter server...");
+                        using namespace std::chrono_literals;
+                        bool success = client_l->service_is_ready() && client_r->service_is_ready();
+                        if (!success) {
+                            RCLCPP_ERROR(this->get_logger(), "Cannot connect to global parameter server.");
+                        }
+                        RCLCPP_INFO(this->get_logger(), "Found global parameter server.");
+
+                        rclcpp::Parameter parameter_l_z = rclcpp::Parameter("stiffness.z", 100.0);
+                        rclcpp::Parameter parameter_r_z = rclcpp::Parameter("stiffness.z", 100.0);
+
+                        rclcpp::Parameter parameter_l_y = rclcpp::Parameter("stiffness.y", 100.0);
+                        rclcpp::Parameter parameter_r_y = rclcpp::Parameter("stiffness.y", 100.0);
+
+                        rclcpp::Parameter parameter_l_x = rclcpp::Parameter("stiffness.x", 100.0);
+                        rclcpp::Parameter parameter_r_x = rclcpp::Parameter("stiffness.x", 100.0);
+
+                        auto result_l = client_l->set_parameters({parameter_l_z, parameter_l_y, parameter_l_x}, 100ms);
+                        auto result_r = client_r->set_parameters({parameter_r_z, parameter_r_y, parameter_r_x}, 100ms);
                     }
                     break;
                 }
@@ -251,6 +276,30 @@ void hri_safety::state_switch(STATE &state)
                     {
                         state = STATE::SLOW;
                         RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
+
+                        // Changing the parameter for stiffness
+                        rclcpp::Node::SharedPtr temp_node = std::make_shared<rclcpp::Node>("temp_node");
+                        auto client_l = std::make_shared<rclcpp::SyncParametersClient>(temp_node, "/left/cartesian_compliance_controller");
+                        auto client_r = std::make_shared<rclcpp::SyncParametersClient>(temp_node, "/right/cartesian_compliance_controller");
+                        RCLCPP_INFO(this->get_logger(), "Waiting for global parameter server...");
+                        using namespace std::chrono_literals;
+                        bool success = client_l->service_is_ready() && client_r->service_is_ready();
+                        if (!success) {
+                            RCLCPP_ERROR(this->get_logger(), "Cannot connect to global parameter server.");
+                        }
+                        RCLCPP_INFO(this->get_logger(), "Found global parameter server.");
+
+                        rclcpp::Parameter parameter_l_z = rclcpp::Parameter("stiffness.z", 500.0);
+                        rclcpp::Parameter parameter_r_z = rclcpp::Parameter("stiffness.z", 500.0);
+
+                        rclcpp::Parameter parameter_l_y = rclcpp::Parameter("stiffness.y", 2500.0);
+                        rclcpp::Parameter parameter_r_y = rclcpp::Parameter("stiffness.y", 2500.0);
+
+                        rclcpp::Parameter parameter_l_x = rclcpp::Parameter("stiffness.x", 250.0);
+                        rclcpp::Parameter parameter_r_x = rclcpp::Parameter("stiffness.x", 250.0);
+
+                        auto result_l = client_l->set_parameters({parameter_l_z, parameter_l_y, parameter_l_x}, 100ms);
+                        auto result_r = client_r->set_parameters({parameter_r_z, parameter_r_y, parameter_r_x}, 100ms);
                     }
                     break;
                 }      

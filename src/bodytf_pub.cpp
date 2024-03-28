@@ -12,7 +12,7 @@ void MMTeleop::ros_init()
     tracking_ready_ = false;
 
     body_tracking_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
-        "/body_tracking_data", rclcpp::SystemDefaultsQoS(),
+        "/track/body_tracking_data", rclcpp::SystemDefaultsQoS(),
         std::bind(&MMTeleop::body_arrary_callback, this, std::placeholders::_1)
     );
 
@@ -39,6 +39,24 @@ void MMTeleop::ros_init()
             }
             response->success = true;
             response->message = "Switch id success. Current id is " + std::to_string(current_id_);
+        }
+    );
+
+    reset_body_index_service_ = this->create_service<std_srvs::srv::Trigger>(
+        "/reset_body_index", 
+        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response) -> void
+        {
+            if (tracking_ready_)
+            {
+                response->success = false;
+                response->message = "Please stop tracking first";
+                RCLCPP_WARN(this->get_logger(), "Please stop tracking first");
+                return;
+            }
+            RCLCPP_INFO(this->get_logger(), "Current id size: %d", recorded_id_.size());
+            recorded_id_.clear();
+            response->success = true;
+            response->message = "Reset id success";
         }
     );
 
