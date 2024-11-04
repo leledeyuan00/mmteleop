@@ -12,6 +12,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 #include <eigen3/Eigen/Dense>
 
@@ -50,6 +51,8 @@ private:
     rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr body_tracking_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr right_pose_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr left_pose_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr left_imu_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr right_imu_sub_;
 
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr right_pose_pub_;
@@ -72,6 +75,9 @@ private:
 
     geometry_msgs::msg::PoseStamped right_target_pose_, right_target_pose_tmp_;
     geometry_msgs::msg::PoseStamped left_target_pose_, left_target_pose_tmp_;
+
+    sensor_msgs::msg::Imu left_imu_msg_;
+    sensor_msgs::msg::Imu right_imu_msg_;
 
     Eigen::Vector3d right_hand_increment_;
     Eigen::Vector3d left_hand_increment_;
@@ -98,6 +104,8 @@ private:
     bool tracking_ready_;
     bool initialized_r_;
     bool initialized_l_;
+    bool imu_initialized_l_;
+    bool imu_initialized_r_;
 };
 
 

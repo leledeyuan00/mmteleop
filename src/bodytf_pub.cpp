@@ -16,6 +16,30 @@ void MMTeleop::ros_init()
         std::bind(&MMTeleop::body_arrary_callback, this, std::placeholders::_1)
     );
 
+    left_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+        "/imu", rclcpp::SystemDefaultsQoS(),
+        [this](const sensor_msgs::msg::Imu::SharedPtr msg) -> void
+        {
+            left_imu_msg_ = *msg;
+            if (!imu_initialized_l_)
+            {
+                imu_initialized_l_ = true;
+            }
+        }
+    );
+
+    right_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+        "/right_cartesian_controller/imu", rclcpp::SystemDefaultsQoS(),
+        [this](const sensor_msgs::msg::Imu::SharedPtr msg) -> void
+        {
+            right_imu_msg_ = *msg;
+            if (!imu_initialized_r_)
+            {
+                imu_initialized_r_ = true;
+            }
+        }
+    );
+
     switch_id_service_ = this->create_service<std_srvs::srv::SetBool>(
         "/switch_id", 
         [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> request, std::shared_ptr<std_srvs::srv::SetBool::Response> response) -> void
@@ -41,6 +65,7 @@ void MMTeleop::ros_init()
             response->message = "Switch id success. Current id is " + std::to_string(current_id_);
         }
     );
+
 
     reset_body_index_service_ = this->create_service<std_srvs::srv::Trigger>(
         "/reset_body_index", 
@@ -179,6 +204,10 @@ void MMTeleop::get_hand_position(std::vector<Eigen::Vector3d> body_positions, Ei
     right_hand_transform.transform.translation.x = right_hand_position(0);
     right_hand_transform.transform.translation.y = right_hand_position(1);
     right_hand_transform.transform.translation.z = right_hand_position(2);
+    if(imu_initialized_r_)
+    {
+        right_hand_transform.transform.rotation = right_imu_msg_.orientation;
+    }
     tf_broadcaster_->sendTransform(right_hand_transform); // Publish the neck transform for visualization in rviz
 
     geometry_msgs::msg::TransformStamped left_hand_transform;
@@ -188,6 +217,10 @@ void MMTeleop::get_hand_position(std::vector<Eigen::Vector3d> body_positions, Ei
     left_hand_transform.transform.translation.x = left_hand_position(0);
     left_hand_transform.transform.translation.y = left_hand_position(1);
     left_hand_transform.transform.translation.z = left_hand_position(2);
+    if ( imu_initialized_l_)
+    {
+        left_hand_transform.transform.rotation = left_imu_msg_.orientation;
+    }
     tf_broadcaster_->sendTransform(left_hand_transform); // Publish the neck transform for visualization in rviz
 
 }

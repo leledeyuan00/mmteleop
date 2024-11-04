@@ -23,6 +23,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp
   visualization_msgs
   geometry_msgs
+  sensor_msgs
   std_srvs
   tf2_ros
   Eigen3
