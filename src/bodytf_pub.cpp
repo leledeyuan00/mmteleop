@@ -17,7 +17,7 @@ void MMTeleop::ros_init()
     );
 
     left_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/imu", rclcpp::SystemDefaultsQoS(),
+        "/tt/imu", rclcpp::SystemDefaultsQoS(),
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) -> void
         {
             left_imu_msg_ = *msg;
@@ -29,7 +29,7 @@ void MMTeleop::ros_init()
     );
 
     right_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/right_cartesian_controller/imu", rclcpp::SystemDefaultsQoS(),
+        "/tt/imu", rclcpp::SystemDefaultsQoS(),
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) -> void
         {
             right_imu_msg_ = *msg;

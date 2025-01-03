@@ -239,7 +239,7 @@ void hri_safety::state_switch(STATE &state)
                         }
                     }
 
-                    if (max_force_ > 5.)
+                    if (max_force_ > 7.)
                     {
                         state = STATE::DRAGGING;
                         RCLCPP_INFO(this->get_logger(),"Switch to dragging mode");
@@ -262,8 +262,11 @@ void hri_safety::state_switch(STATE &state)
                         rclcpp::Parameter parameter_l_y = rclcpp::Parameter("stiffness.y", 100.0);
                         rclcpp::Parameter parameter_r_y = rclcpp::Parameter("stiffness.y", 100.0);
 
-                        rclcpp::Parameter parameter_l_x = rclcpp::Parameter("stiffness.x", 100.0);
-                        rclcpp::Parameter parameter_r_x = rclcpp::Parameter("stiffness.x", 100.0);
+                        rclcpp::Parameter parameter_l_x = rclcpp::Parameter("stiffness.x", 50.0);
+                        rclcpp::Parameter parameter_r_x = rclcpp::Parameter("stiffness.x", 50.0);
+
+                        left_start_pose_msg_ = left_current_pose_msg_;
+                        right_start_pose_msg_ = right_current_pose_msg_;
 
                         auto result_l = client_l->set_parameters({parameter_l_z, parameter_l_y, parameter_l_x}, 100ms);
                         auto result_r = client_r->set_parameters({parameter_r_z, parameter_r_y, parameter_r_x}, 100ms);
@@ -272,7 +275,7 @@ void hri_safety::state_switch(STATE &state)
                 }
             case STATE::DRAGGING:
                 {
-                    if (min_hand_distance_ >= 0.2 && ( max_force_ < 5.))
+                    if (min_hand_distance_ >= 0.2 && ( max_force_ < 7.))
                     {
                         state = STATE::SLOW;
                         RCLCPP_INFO(this->get_logger(),"Switch to slow mode");
@@ -354,9 +357,11 @@ void hri_safety::loop()
             {
                 if (state_ == STATE::DRAGGING)
                 { 
+                    right_target_pose_msg_ = right_start_pose_msg_;
+                    left_target_pose_msg_ = left_start_pose_msg_;
                     
-                    right_target_pose_msg_ = right_current_pose_msg_;
-                    left_target_pose_msg_ = left_current_pose_msg_;
+                    right_target_pose_msg_.pose.position = right_current_pose_msg_.pose.position;
+                    left_target_pose_msg_.pose.position = left_current_pose_msg_.pose.position;
 
                     right_target_pose_msg_.header.stamp = ros_clock_.now();
                     left_target_pose_msg_.header.stamp = ros_clock_.now();
@@ -366,6 +371,7 @@ void hri_safety::loop()
                 }
             }
             // record data
+            // RCLCPP_INFO(this->get_logger(), "min_hand_distance_: %f", min_hand_distance_);
             data_file_ << (ros_clock_.now() - start_time_).seconds() << " " << (int)(state_) << " " << min_hand_distance_ << " " << right_current_pose_msg_.pose.position.x << " " << right_current_pose_msg_.pose.position.y << " " << right_current_pose_msg_.pose.position.z << " " << left_current_pose_msg_.pose.position.x << " " << left_current_pose_msg_.pose.position.y << " " << left_current_pose_msg_.pose.position.z << " " << right_wrench_msg_.wrench.force.x << " " << right_wrench_msg_.wrench.force.y << " " << right_wrench_msg_.wrench.force.z << " " << left_wrench_msg_.wrench.force.x << " " << left_wrench_msg_.wrench.force.y << " " << left_wrench_msg_.wrench.force.z << std::endl;
             loop_rate.sleep();
         }

@@ -29,6 +29,9 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   Eigen3
   tf2_eigen
   control_toolbox
+  cartesian_controller_msgs
+  tf2_kdl
+  garment_motion_base
 )
 
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
@@ -73,6 +76,23 @@ target_include_directories(hri_system PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_executable(body_record src/body_record.cpp)
+ament_target_dependencies(body_record ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(body_record PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+add_executable(mmteleop_imu 
+src/mmteleop_imu.cpp
+src/kalman_filter.cpp
+)
+ament_target_dependencies(mmteleop_imu ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(mmteleop_imu PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 
 install(TARGETS
   mmteleop
@@ -80,6 +100,8 @@ install(TARGETS
   hri_safety
   hri_cover_plate
   hri_system
+  body_record
+  mmteleop_imu
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -19,6 +19,10 @@
   <depend>eigen</depend>
   <depend>control_toolbox</depend>
   <depend>sensor_msgs</depend>
+  <depend>garment_motion_base</depend>
+  <depend>cartesian_controller_msgs</depend>
+  <depend>tf2_kdl</depend>
+
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
