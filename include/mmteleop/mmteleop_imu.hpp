@@ -92,6 +92,7 @@ private:
     Eigen::Vector3d hand_pose_start_r_;
     Eigen::Quaterniond hand_ori_start_l_;
     Eigen::Quaterniond hand_ori_start_r_;
+    bool y_axis_mirror_{true};
 };
 
 } // namespace garment_research

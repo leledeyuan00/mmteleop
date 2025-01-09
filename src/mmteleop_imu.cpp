@@ -21,8 +21,8 @@ void MmteleopIMU::custom_init()
             imu_msg_l_ = *msg;
             imu_ori_l_ = Eigen::Quaterniond(imu_msg_l_.orientation.w, imu_msg_l_.orientation.x, imu_msg_l_.orientation.y, imu_msg_l_.orientation.z);
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_l_.linear_acceleration.x, imu_msg_l_.linear_acceleration.y, imu_msg_l_.linear_acceleration.z);
-            Eigen::Vector3d g(0, 0, 9.81);
-            imu_acc_l_ = imu_ori_l_.inverse() * imu_acc - g;
+            Eigen::Vector3d g(0, 0, 0.981);
+            imu_acc_l_ = -10*(imu_ori_l_.inverse() * imu_acc + g);
             if (!imu_received_l_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_l_ = true;
@@ -34,8 +34,8 @@ void MmteleopIMU::custom_init()
             imu_msg_r_ = *msg;
             imu_ori_r_ = Eigen::Quaterniond(imu_msg_r_.orientation.w, imu_msg_r_.orientation.x, imu_msg_r_.orientation.y, imu_msg_r_.orientation.z);
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_r_.linear_acceleration.x, imu_msg_r_.linear_acceleration.y, imu_msg_r_.linear_acceleration.z);
-            Eigen::Vector3d g(0, 0, 9.81);
-            imu_acc_r_ = imu_ori_r_.inverse() * imu_acc - g;
+            Eigen::Vector3d g(0, 0, 0.981);
+            imu_acc_r_ = -10*(imu_ori_r_.inverse() * imu_acc + g);
             if (!imu_received_r_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_r_ = true;
@@ -71,9 +71,9 @@ void MmteleopIMU::custom_init()
     kalman_filters_ptrs_r_.resize(3);
     Eigen::Matrix3d initial_covariance = Eigen::Matrix3d::Identity();
     Eigen::Matrix3d transition_matrix = (Eigen::Matrix3d() << 1, dt, 0, 0, 1, dt, 0, 0, 1).finished();
-    Eigen::Vector3d observation_matrix = (Eigen::Vector3d() << 1, 0, 0).finished();
+    Eigen::Matrix3d observation_matrix = (Eigen::Matrix3d() << 1, 0, 0, 0, 1, 0, 0, 0, 1).finished();
     Eigen::Matrix3d process_noise = (Eigen::Matrix3d() << pow(dt,4)/4, pow(dt,3)/2, pow(dt,2)/2, pow(dt,3)/2, pow(dt,2), dt, pow(dt,2)/2, dt, 1).finished();
-    double measurement_noise = 0.08 * 0.08;
+    Eigen::Matrix3d measurement_noise = (Eigen::Matrix3d() << 0.08*0.08, 0, 0, 0, 1000, 0, 0, 0, 100).finished();
     for (size_t i = 0; i < kalman_filters_ptrs_l_.size(); ++i)
     {
         kalman_filters_ptrs_l_[i].reset(new KalmanFilter(initial_covariance, transition_matrix, observation_matrix, process_noise, measurement_noise));
@@ -175,9 +175,11 @@ void MmteleopIMU::tasks_init()
         geometry_msgs::msg::PoseStamped start_pose_l = robot_l.start_pose;
         Eigen::Quaterniond robot_ori_start_l = Eigen::Quaterniond(start_pose_l.pose.orientation.w, start_pose_l.pose.orientation.x, start_pose_l.pose.orientation.y, start_pose_l.pose.orientation.z);
         Eigen::Vector3d hand_pose_filtered_l = Eigen::Vector3d(hand_filtered_l_x(0), hand_filtered_l_y(0), hand_filtered_l_z(0));
-        Eigen::Quaterniond robot_ori_target_l =  (hand_ori_start_l_.inverse() * imu_ori_l_) * robot_ori_start_l;
 
         // Calculate the target pose
+        Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
+        Eigen::Quaterniond ori_inc_trans_l =  y_axis_mirror_ ?  Eigen::Quaterniond(ori_inc_l.w(), ori_inc_l.x(), -ori_inc_l.y(), ori_inc_l.z()) : ori_inc_l; // This is a trick to convert the orientation from the right hand to the left hand rotation
+        Eigen::Quaterniond robot_ori_target_l =  ori_inc_trans_l * robot_ori_start_l;
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
         target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 0.8;
         target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 0.8;
@@ -200,9 +202,11 @@ void MmteleopIMU::tasks_init()
         geometry_msgs::msg::PoseStamped start_pose_r = robot_r.start_pose;
         Eigen::Quaterniond robot_ori_start_r = Eigen::Quaterniond(start_pose_r.pose.orientation.w, start_pose_r.pose.orientation.x, start_pose_r.pose.orientation.y, start_pose_r.pose.orientation.z);
         Eigen::Vector3d hand_pose_filtered_r = Eigen::Vector3d(hand_filtered_r_x(0), hand_filtered_r_y(0), hand_filtered_r_z(0));
-        Eigen::Quaterniond robot_ori_target_r =  (hand_ori_start_r_.inverse() * imu_ori_r_) * robot_ori_start_r;
         
         // Calculate the target pose
+        Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;
+        Eigen::Quaterniond ori_inc_trans_r = y_axis_mirror_ ? Eigen::Quaterniond(ori_inc_r.w(), ori_inc_r.x(), -ori_inc_r.y(), ori_inc_r.z()) : ori_inc_r; // This is a trick to convert the orientation from the right hand to the left hand rotation
+        Eigen::Quaterniond robot_ori_target_r =  ori_inc_trans_r * robot_ori_start_r;
         geometry_msgs::msg::PoseStamped target_pose_r = robot_r.start_pose;
         target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 0.8;
         target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 0.8;

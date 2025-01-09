@@ -16,7 +16,7 @@ void body_record::ros_init()
     
     // sub
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/imu", rclcpp::SystemDefaultsQoS(),
+        "/left_cartesian_compliance_controller/imu", rclcpp::SystemDefaultsQoS(),
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_ = *msg;
         }

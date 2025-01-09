@@ -10,8 +10,8 @@ class KalmanFilter
 public:
 
     KalmanFilter(const Eigen::Matrix3d& initial_covariance,
-              const Eigen::Matrix3d& transition_matrix, const Eigen::Vector3d& observation_matrix, 
-              const Eigen::Matrix3d& process_noise, const double& measurement_noise);
+              const Eigen::Matrix3d& transition_matrix, const Eigen::Matrix3d& observation_matrix, 
+              const Eigen::Matrix3d& process_noise, const Eigen::Matrix3d& measurement_noise);
 
     void set_initial_state(const Eigen::Vector3d& initial_state){
         state_ = initial_state;
@@ -25,9 +25,9 @@ private:
     Eigen::Vector3d state_;
     Eigen::Matrix3d covariance_;
     Eigen::Matrix3d transition_matrix_;
-    Eigen::Vector3d observation_matrix_;
+    Eigen::Matrix3d observation_matrix_;
     Eigen::Matrix3d process_noise_;
-    double measurement_noise_;
+    Eigen::Matrix3d measurement_noise_;
 };
 
 }
