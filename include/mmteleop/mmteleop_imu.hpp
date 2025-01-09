@@ -44,6 +44,7 @@ private:
     virtual void custom_init();
 
     void tf_update();
+    void emergenccy_detection();
     // tasks
     void test_service(bool on);
     virtual void tasks_init();
@@ -73,7 +74,7 @@ private:
     bool imu_received_r_{false};
 
     // body transofrm matrix
-    Eigen::Isometry3d body_neck_;
+    Eigen::Isometry3d body_neck_, body_neck_start_;
     Eigen::Isometry3d body_right_hand_;
     Eigen::Isometry3d body_left_hand_;
 
@@ -92,7 +93,8 @@ private:
     Eigen::Vector3d hand_pose_start_r_;
     Eigen::Quaterniond hand_ori_start_l_;
     Eigen::Quaterniond hand_ori_start_r_;
-    bool y_axis_mirror_{true};
+    bool y_axis_mirror_{false};
+    bool emergency_stop_{false};
 };
 
 } // namespace garment_research

@@ -108,15 +108,28 @@ void MmteleopIMU::tf_update()
     body_left_hand_ = tf2::transformToEigen(left_hand_transform);
 }
 
+void MmteleopIMU::emergenccy_detection()
+{
+    auto robot_l = get_robot_state_l();
+    auto robot_r = get_robot_state_r();
+    Eigen::Vector3d left_wrench_force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
+    Eigen::Vector3d right_wrench_force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
 
+    double thereshold = 10; // N
+    if (left_wrench_force.norm() > thereshold || right_wrench_force.norm() > thereshold)
+    {
+        RCLCPP_ERROR(this->get_logger(), "Emergency detected, current force is: [%f, %f]", left_wrench_force.norm(), right_wrench_force.norm());
+        emergency_stop_ = true;
+    }
+}
 
 void MmteleopIMU::tasks_init()
 {
 
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
-        std::vector<double> left_home_joints = {-0.26677, -0.453412, 2.06686, -0.2983, -0.64860, -1.184497};
-        std::vector<double> right_home_joints = {0.07035, -0.4897, 2.0653009, 0.114585, -0.54722, 1.42553};
+        std::vector<double> left_home_joints = {-0.568016, -0.082871, 2.115638, 0.011060, -1.239965, 0.353554};
+        std::vector<double> right_home_joints = {0.497529, -0.080796, 2.134854, -0.084095, -1.352510, -0.399333};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
@@ -141,33 +154,39 @@ void MmteleopIMU::tasks_init()
     task_pushback(TaskPtr("Start Teleop", [this](){
         tf_update();
         // Initialize the start position
-        hand_pose_start_l_ = Eigen::Vector3d(body_left_hand_.translation().x(), body_left_hand_.translation().y(), body_left_hand_.translation().z());
-        hand_pose_start_r_ = Eigen::Vector3d(body_right_hand_.translation().x(), body_right_hand_.translation().y(), body_right_hand_.translation().z());
+        body_neck_start_ = body_neck_;
+        hand_pose_start_l_ = (body_neck_start_.inverse() * body_left_hand_).translation(); // The hand pose is relative to the neck
+        RCLCPP_INFO(this->get_logger(), "Hand pose start is: [%f, %f, %f]", hand_pose_start_l_(0), hand_pose_start_l_(1), hand_pose_start_l_(2));
+        hand_pose_start_r_ = (body_neck_start_.inverse() * body_right_hand_).translation(); // The hand pose is relative to the neck
+        // hand_pose_start_l_ = Eigen::Vector3d(body_left_hand_.translation().x(), body_left_hand_.translation().y(), body_left_hand_.translation().z());
+        // hand_pose_start_r_ = Eigen::Vector3d(body_right_hand_.translation().x(), body_right_hand_.translation().y(), body_right_hand_.translation().z());
         hand_ori_start_l_ = imu_ori_l_;
         hand_ori_start_r_ = imu_ori_r_;
 
         // Initialize the kalman filter
         // Left kalman filter
-        kalman_filters_ptrs_l_[0]->set_initial_state(Eigen::Vector3d(body_left_hand_.translation().x(), 0, imu_acc_l_(0)));
-        kalman_filters_ptrs_l_[1]->set_initial_state(Eigen::Vector3d(body_left_hand_.translation().y(), 0, imu_acc_l_(1)));
-        kalman_filters_ptrs_l_[2]->set_initial_state(Eigen::Vector3d(body_left_hand_.translation().z(), 0, imu_acc_l_(2)));
+        kalman_filters_ptrs_l_[0]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(0) , 0, 0));
+        kalman_filters_ptrs_l_[1]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(1), 0, 0));
+        kalman_filters_ptrs_l_[2]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(2), 0, 0));
         // right kalman filter
-        kalman_filters_ptrs_r_[0]->set_initial_state(Eigen::Vector3d(body_right_hand_.translation().x(), 0, imu_acc_r_(0)));
-        kalman_filters_ptrs_r_[1]->set_initial_state(Eigen::Vector3d(body_right_hand_.translation().y(), 0, imu_acc_r_(1)));
-        kalman_filters_ptrs_r_[2]->set_initial_state(Eigen::Vector3d(body_right_hand_.translation().z(), 0, imu_acc_r_(2)));
+        kalman_filters_ptrs_r_[0]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(0) , 0, 0));
+        kalman_filters_ptrs_r_[1]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(1), 0, 0));
+        kalman_filters_ptrs_r_[2]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(2), 0, 0));
     },
     [this](){
         auto robot_l = get_robot_state_l();
         auto robot_r = get_robot_state_r();
+        Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
         // Update tf
         tf_update();
-
+        
         // Left
         // Update kalman filter
-        Eigen::Vector3d hand_filtered_l_x = kalman_filters_ptrs_l_[0]->update(imu_acc_l_(0), body_left_hand_.translation().x());
-        Eigen::Vector3d hand_filtered_l_y = kalman_filters_ptrs_l_[1]->update(imu_acc_l_(1), body_left_hand_.translation().y());
-        Eigen::Vector3d hand_filtered_l_z = kalman_filters_ptrs_l_[2]->update(imu_acc_l_(2), body_left_hand_.translation().z());
+        Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
 
+        Eigen::Vector3d hand_filtered_l_x = kalman_filters_ptrs_l_[0]->update(imu_acc_l_(0), current_left_hand(0));
+        Eigen::Vector3d hand_filtered_l_y = kalman_filters_ptrs_l_[1]->update(imu_acc_l_(1), current_left_hand(1));
+        Eigen::Vector3d hand_filtered_l_z = kalman_filters_ptrs_l_[2]->update(imu_acc_l_(2), current_left_hand(2));
         // RCLCPP_INFO(this->get_logger(), "[%f, %f, %f], [%f, %f, %f]", imu_acc_l_(0), imu_acc_l_(1), imu_acc_l_(2),body_left_hand_.translation().x(), body_left_hand_.translation().y(), body_left_hand_.translation().z());
 
 
@@ -180,23 +199,36 @@ void MmteleopIMU::tasks_init()
         Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
         Eigen::Quaterniond ori_inc_trans_l =  y_axis_mirror_ ?  Eigen::Quaterniond(ori_inc_l.w(), ori_inc_l.x(), -ori_inc_l.y(), ori_inc_l.z()) : ori_inc_l; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_l =  ori_inc_trans_l * robot_ori_start_l;
+        
+        // Increment as force response
+        Eigen::Vector3d increment_l = (hand_pose_filtered_l - hand_pose_start_l_) * 0.1;
+        auto current_ee_pose_l = robot_l.current_pose;
+        auto current_ee_monitor_l = robot_l.target_monitor;
+        Eigen::Vector3d current_bias_l = Eigen::Vector3d(current_ee_pose_l.pose.position.x - current_ee_monitor_l.pose.position.x, 
+                                                        current_ee_pose_l.pose.position.y - current_ee_monitor_l.pose.position.y, 
+                                                        current_ee_pose_l.pose.position.z - current_ee_monitor_l.pose.position.z);
+        
+        Eigen::Vector3d target_bias_l = increment_l.norm() > 5e-5 ? (increment_l.normalized() * (current_bias_l.dot(increment_l) / increment_l.norm()))*0.5 + increment_l : zero_3d;
+        
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
-        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 0.8;
-        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 0.8;
-        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 0.8;
+        target_pose_l.header.stamp = this->now();
+        target_pose_l.pose.position.x = current_ee_pose_l.pose.position.x + increment_l.x();
+        target_pose_l.pose.position.y = current_ee_pose_l.pose.position.y + increment_l.y();
+        target_pose_l.pose.position.z = current_ee_pose_l.pose.position.z + increment_l.z();
         // RCLCPP_INFO(this->get_logger(), "Target pose is: [%f, %f, %f]", target_pose_l.pose.position.x, target_pose_l.pose.position.y, target_pose_l.pose.position.z);
         target_pose_l.pose.orientation.x = robot_ori_target_l.x();
         target_pose_l.pose.orientation.y = robot_ori_target_l.y();
         target_pose_l.pose.orientation.z = robot_ori_target_l.z();
         target_pose_l.pose.orientation.w = robot_ori_target_l.w();
+        
 
-        set_target_pose_l(target_pose_l);
 
         // Right
         // Update kalman filter
-        Eigen::Vector3d hand_filtered_r_x = kalman_filters_ptrs_r_[0]->update(imu_acc_r_(0), body_right_hand_.translation().x());
-        Eigen::Vector3d hand_filtered_r_y = kalman_filters_ptrs_r_[1]->update(imu_acc_r_(1), body_right_hand_.translation().y());
-        Eigen::Vector3d hand_filtered_r_z = kalman_filters_ptrs_r_[2]->update(imu_acc_r_(2), body_right_hand_.translation().z());
+        Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
+        Eigen::Vector3d hand_filtered_r_x = kalman_filters_ptrs_r_[0]->update(imu_acc_r_(0), current_right_hand(0));
+        Eigen::Vector3d hand_filtered_r_y = kalman_filters_ptrs_r_[1]->update(imu_acc_r_(1), current_right_hand(1));
+        Eigen::Vector3d hand_filtered_r_z = kalman_filters_ptrs_r_[2]->update(imu_acc_r_(2), current_right_hand(2));
 
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_r = robot_r.start_pose;
@@ -207,21 +239,41 @@ void MmteleopIMU::tasks_init()
         Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;
         Eigen::Quaterniond ori_inc_trans_r = y_axis_mirror_ ? Eigen::Quaterniond(ori_inc_r.w(), ori_inc_r.x(), -ori_inc_r.y(), ori_inc_r.z()) : ori_inc_r; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_r =  ori_inc_trans_r * robot_ori_start_r;
+
+        // Increment as force response
+        Eigen::Vector3d increment_r = (hand_pose_filtered_r - hand_pose_start_r_) * 0.1;
+        auto current_ee_pose_r = robot_r.current_pose;
+        auto current_ee_monitor_r = robot_r.target_monitor;
+        Eigen::Vector3d current_bias_r = Eigen::Vector3d(current_ee_pose_r.pose.position.x - current_ee_monitor_r.pose.position.x, 
+                                                        current_ee_pose_r.pose.position.y - current_ee_monitor_r.pose.position.y, 
+                                                        current_ee_pose_r.pose.position.z - current_ee_monitor_r.pose.position.z);        
+        Eigen::Vector3d target_bias_r = increment_r.norm() > 5e-5 ? (increment_r.normalized() * (current_bias_r.dot(increment_r) / increment_r.norm()))*0.5 + increment_r : zero_3d;
+
         geometry_msgs::msg::PoseStamped target_pose_r = robot_r.start_pose;
-        target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 0.8;
-        target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 0.8;
-        target_pose_r.pose.position.z = start_pose_r.pose.position.z  + (hand_pose_filtered_r(2) - hand_pose_start_r_(2)) * 0.8;
+        target_pose_r.header.stamp = this->now();
+        target_pose_r.pose.position.x = current_ee_pose_r.pose.position.x + increment_r.x();
+        target_pose_r.pose.position.y = current_ee_pose_r.pose.position.y + increment_r.y();
+        target_pose_r.pose.position.z = current_ee_pose_r.pose.position.z + increment_r.z();
+        
         // RCLCPP_INFO(this->get_logger(), "Target pose is: [%f, %f, %f]", target_pose_r.pose.position.x, target_pose_r.pose.position.y, target_pose_r.pose.position.z);
         target_pose_r.pose.orientation.x = robot_ori_target_r.x();
         target_pose_r.pose.orientation.y = robot_ori_target_r.y();
         target_pose_r.pose.orientation.z = robot_ori_target_r.z();
         target_pose_r.pose.orientation.w = robot_ori_target_r.w();
-
-        set_target_pose_r(target_pose_r);
+        
+        
+        // Set target pose
+        emergenccy_detection();
+        if (!emergency_stop_)
+        {
+            set_target_pose_l(target_pose_l);
+            set_target_pose_r(target_pose_r);
+        }        
         
         if (!teleop_start_)
         {
-            goto_init_task();
+            // goto_init_task();
+            set_task_finished();
         }
     }));
 
