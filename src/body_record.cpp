@@ -91,7 +91,7 @@ void body_record::robot_update()
         // body
         neck_transform = buffer_.lookupTransform(robot_frame_, "body_base_link", tf2::TimePointZero);
         right_hand_transform = buffer_.lookupTransform(robot_frame_, "right_hand_link", tf2::TimePointZero);
-        left_hand_transform = buffer_.lookupTransform(robot_frame_, "left_hand_link", tf2::TimePointZero);
+        left_hand_transform = buffer_.lookupTransform("body_base_link", "left_hand_link", tf2::TimePointZero);
     }
     catch (tf2::TransformException &ex)
     {

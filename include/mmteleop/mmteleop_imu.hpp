@@ -42,9 +42,9 @@ public:
 private:
     /* function */
     virtual void custom_init();
-
     void tf_update();
     void emergenccy_detection();
+    void record_data_init();
     // tasks
     void test_service(bool on);
     virtual void tasks_init();
@@ -95,6 +95,10 @@ private:
     Eigen::Quaterniond hand_ori_start_r_;
     bool y_axis_mirror_{false};
     bool emergency_stop_{false};
+
+    // recording the data to txt file
+    bool start_record_data_;
+    std::ofstream data_file_;    
 };
 
 } // namespace garment_research
