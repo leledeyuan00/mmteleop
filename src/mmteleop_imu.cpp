@@ -35,8 +35,9 @@ void MmteleopIMU::custom_init()
             imu_msg_r_ = *msg;
             imu_ori_r_ = Eigen::Quaterniond(imu_msg_r_.orientation.w, imu_msg_r_.orientation.x, imu_msg_r_.orientation.y, imu_msg_r_.orientation.z);
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_r_.linear_acceleration.x, imu_msg_r_.linear_acceleration.y, imu_msg_r_.linear_acceleration.z);
-            Eigen::Vector3d g(0, 0, 0.981);
-            imu_acc_r_ = -1*(imu_ori_r_.inverse() * imu_acc + g);
+            // Eigen::Vector3d g(0, 0, 0.981);
+            // imu_acc_r_ = -1*(imu_ori_r_.inverse() * imu_acc + g);
+            imu_acc_r_ = imu_acc;
             if (!imu_received_r_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_r_ = true;
@@ -67,19 +68,21 @@ void MmteleopIMU::custom_init()
     // Initialize Kalman
     // Kalman filter for calculating cartesian velocities
     double dt = 0.008; // 4 ms
+    double sigma_bias = 0.3;
+    double sigma_measurement = 1000;
     // std::shared_ptr<KalmanFilter> kalman_filter_ptr;
-    kalman_filters_ptrs_l_.resize(3);
-    kalman_filters_ptrs_r_.resize(3);
-    Eigen::Matrix3d initial_covariance = Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d transition_matrix = (Eigen::Matrix3d() << 1, dt, 0, 0, 1, dt, 0, 0, 1).finished();
-    Eigen::Matrix3d observation_matrix = (Eigen::Matrix3d() << 1, 0, 0, 0, 1, 0, 0, 0, 1).finished();
-    Eigen::Matrix3d process_noise = (Eigen::Matrix3d() << pow(dt,4)/4, pow(dt,3)/2, pow(dt,2)/2, pow(dt,3)/2, pow(dt,2), dt, pow(dt,2)/2, dt, 1).finished();
-    Eigen::Matrix3d measurement_noise = (Eigen::Matrix3d() << 0.08*0.08, 0, 0, 0, 1000, 0, 0, 0, 1).finished();
-    for (size_t i = 0; i < kalman_filters_ptrs_l_.size(); ++i)
-    {
-        kalman_filters_ptrs_l_[i].reset(new KalmanFilter(initial_covariance, transition_matrix, observation_matrix, process_noise, measurement_noise));
-        kalman_filters_ptrs_r_[i].reset(new KalmanFilter(initial_covariance, transition_matrix, observation_matrix, process_noise, measurement_noise));
-    }
+    Matrix9d initial_covariance = Matrix9d::Identity();
+    Matrix9d jacobian_matrix = Matrix9d::Identity(); // will be updated in the kalman filter loop
+    MatrixHd observation_matrix = (MatrixHd() << Matrix3d::Identity(), Matrix3d::Zero(), Matrix3d::Zero()).finished(); // 3x9
+    Matrix9d process_noise;
+    process_noise << Matrix3d::Identity() * pow(dt,4)/4, Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Zero(),
+                     Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Identity() * pow(dt,2), Matrix3d::Zero(),
+                     Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Identity() * pow(sigma_bias,2);
+    Matrix3d measurement_noise = Matrix3d::Identity() * pow(sigma_measurement,2); // 
+
+    kalman_filter_ptr_l_.reset(new KalmanFilter(initial_covariance, jacobian_matrix, observation_matrix, process_noise, measurement_noise));
+    kalman_filter_ptr_r_.reset(new KalmanFilter(initial_covariance, jacobian_matrix, observation_matrix, process_noise, measurement_noise));
+    
 }
 
 void MmteleopIMU::record_data_init()
@@ -176,14 +179,14 @@ void MmteleopIMU::tasks_init()
         hand_ori_start_r_ = imu_ori_r_;
 
         // Initialize the kalman filter
+        Vector3d initial_bias = (Vector3d() <<-0.007, 0.002, 0.055).finished();
         // Left kalman filter
-        kalman_filters_ptrs_l_[0]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(0) , 0, 0));
-        kalman_filters_ptrs_l_[1]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(1), 0, 0));
-        kalman_filters_ptrs_l_[2]->set_initial_state(Eigen::Vector3d(hand_pose_start_l_(2), 0, 0));
+        Vector9d initial_state_l = (Vector9d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias).finished();
+        kalman_filter_ptr_l_->set_initial_state(initial_state_l);
+
         // right kalman filter
-        kalman_filters_ptrs_r_[0]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(0) , 0, 0));
-        kalman_filters_ptrs_r_[1]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(1), 0, 0));
-        kalman_filters_ptrs_r_[2]->set_initial_state(Eigen::Vector3d(hand_pose_start_r_(2), 0, 0));
+        Vector9d initial_state_r = (Vector9d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias).finished();
+        kalman_filter_ptr_r_->set_initial_state(initial_state_r);
 
         // record data
         record_data_init();
@@ -199,14 +202,12 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
 
-        Eigen::Vector3d hand_filtered_l_x = kalman_filters_ptrs_l_[0]->update(imu_acc_l_(0), current_left_hand(0));
-        Eigen::Vector3d hand_filtered_l_y = kalman_filters_ptrs_l_[1]->update(imu_acc_l_(1), current_left_hand(1));
-        Eigen::Vector3d hand_filtered_l_z = kalman_filters_ptrs_l_[2]->update(imu_acc_l_(2), current_left_hand(2));
+        Eigen::Vector9d hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_, current_left_hand, imu_ori_l_.matrix(), 0.008);
 
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_l = robot_l.start_pose;
         Eigen::Quaterniond robot_ori_start_l = Eigen::Quaterniond(start_pose_l.pose.orientation.w, start_pose_l.pose.orientation.x, start_pose_l.pose.orientation.y, start_pose_l.pose.orientation.z);
-        Eigen::Vector3d hand_pose_filtered_l = Eigen::Vector3d(hand_filtered_l_x(0), hand_filtered_l_y(0), hand_filtered_l_z(0));
+        Eigen::Vector3d hand_pose_filtered_l = hand_filtered_l.block<3,1>(0,0);
 
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
@@ -215,7 +216,7 @@ void MmteleopIMU::tasks_init()
         
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
         target_pose_l.header.stamp = this->now();
-        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 1.0;
+        target_pose_l.pose.position.x = start_pose_l.pose.position.x  - (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 1.0;
         target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 1.0;
         target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 1.0;
 
@@ -230,14 +231,12 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
         
-        Eigen::Vector3d hand_filtered_r_x = kalman_filters_ptrs_r_[0]->update(imu_acc_r_(0), current_right_hand(0));
-        Eigen::Vector3d hand_filtered_r_y = kalman_filters_ptrs_r_[1]->update(imu_acc_r_(1), current_right_hand(1));
-        Eigen::Vector3d hand_filtered_r_z = kalman_filters_ptrs_r_[2]->update(imu_acc_r_(2), current_right_hand(2));
+        Eigen::Vector9d hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_, current_right_hand, imu_ori_r_.matrix(), 0.008);
 
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_r = robot_r.start_pose;
         Eigen::Quaterniond robot_ori_start_r = Eigen::Quaterniond(start_pose_r.pose.orientation.w, start_pose_r.pose.orientation.x, start_pose_r.pose.orientation.y, start_pose_r.pose.orientation.z);
-        Eigen::Vector3d hand_pose_filtered_r = Eigen::Vector3d(hand_filtered_r_x(0), hand_filtered_r_y(0), hand_filtered_r_z(0));
+        Eigen::Vector3d hand_pose_filtered_r = hand_filtered_r.block<3,1>(0,0);
         
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;

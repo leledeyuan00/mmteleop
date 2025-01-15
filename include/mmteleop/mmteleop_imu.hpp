@@ -85,8 +85,8 @@ private:
     Eigen::Quaterniond imu_ori_r_;
 
     // kalman filter
-    std::vector<std::shared_ptr<KalmanFilter>> kalman_filters_ptrs_l_;
-    std::vector<std::shared_ptr<KalmanFilter>> kalman_filters_ptrs_r_;
+    std::shared_ptr<KalmanFilter> kalman_filter_ptr_l_;
+    std::shared_ptr<KalmanFilter> kalman_filter_ptr_r_;
 
     // teleop states
     Eigen::Vector3d hand_pose_start_l_;
