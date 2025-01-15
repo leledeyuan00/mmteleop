@@ -66,7 +66,7 @@ void MmteleopIMU::custom_init()
 
     // Initialize Kalman
     // Kalman filter for calculating cartesian velocities
-    double dt = 0.004; // 4 ms
+    double dt = 0.008; // 4 ms
     // std::shared_ptr<KalmanFilter> kalman_filter_ptr;
     kalman_filters_ptrs_l_.resize(3);
     kalman_filters_ptrs_r_.resize(3);
