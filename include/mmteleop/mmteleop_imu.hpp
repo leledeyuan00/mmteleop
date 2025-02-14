@@ -81,8 +81,8 @@ private:
     Eigen::Isometry3d body_left_hand_;
 
     // IMU
-    Eigen::Vector3d imu_acc_l_;
-    Eigen::Vector3d imu_acc_r_;
+    std::vector<Eigen::Vector3d> imu_acc_l_buffer_;
+    std::vector<Eigen::Vector3d> imu_acc_r_buffer_;
     Eigen::Quaterniond imu_ori_l_;
     Eigen::Quaterniond imu_ori_r_;
 

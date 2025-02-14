@@ -16,6 +16,7 @@ MmteleopIMU::MmteleopIMU() : GarmentMotionBase("multi_modal_teleop_imu")
 void MmteleopIMU::custom_init()
 {
     // imu sub
+    imu_acc_l_buffer_.resize(30); // for 240 ms
     imu_sub_l_ = this->create_subscription<sensor_msgs::msg::Imu>(
         "/left_cartesian_compliance_controller/imu", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_l_ = *msg;
@@ -23,7 +24,9 @@ void MmteleopIMU::custom_init()
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_l_.linear_acceleration.x, imu_msg_l_.linear_acceleration.y, imu_msg_l_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
             // imu_acc_l_ = (imu_ori_l_.inverse() * imu_acc);
-            imu_acc_l_ = imu_acc;
+            Vector3d imu_acc_l_ = imu_acc * 10;
+            imu_acc_l_buffer_.push_back(imu_acc_l_);
+            imu_acc_l_buffer_.erase(imu_acc_l_buffer_.begin());
             if (!imu_received_l_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_l_ = true;
@@ -31,6 +34,7 @@ void MmteleopIMU::custom_init()
             new_imu_data_l_ = true;
         });
     
+    imu_acc_r_buffer_.resize(30); // for 240 ms
     imu_sub_r_ = this->create_subscription<sensor_msgs::msg::Imu>(
         "/right_cartesian_compliance_controller/imu", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_r_ = *msg;
@@ -38,7 +42,9 @@ void MmteleopIMU::custom_init()
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_r_.linear_acceleration.x, imu_msg_r_.linear_acceleration.y, imu_msg_r_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
             // imu_acc_r_ = -1*(imu_ori_r_.inverse() * imu_acc + g);
-            imu_acc_r_ = imu_acc;
+            Vector3d imu_acc_r_ = imu_acc * 10;
+            imu_acc_r_buffer_.push_back(imu_acc_r_);
+            imu_acc_r_buffer_.erase(imu_acc_r_buffer_.begin());
             if (!imu_received_r_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_r_ = true;
@@ -49,7 +55,6 @@ void MmteleopIMU::custom_init()
     body_tracking_status_sub_ = this->create_subscription<std_msgs::msg::Empty>(
         "/body_tracking_status", 10, [this](const std_msgs::msg::Empty::SharedPtr msg) {
             new_tracking_data_ = true;
-            RCLCPP_INFO(this->get_logger(), "New tracking data received");
         });
 
     // service
@@ -78,14 +83,16 @@ void MmteleopIMU::custom_init()
     double dt = 0.008; // 4 ms
     double sigma_bias = 0.3;
     double sigma_measurement = 10.0;
+    double sigma_dtheata = 1.0;
     // std::shared_ptr<KalmanFilter> kalman_filter_ptr;
-    Matrix9d initial_covariance = Matrix9d::Identity();
-    Matrix9d jacobian_matrix = Matrix9d::Identity(); // will be updated in the kalman filter loop
-    MatrixHd observation_matrix = (MatrixHd() << Matrix3d::Identity(), Matrix3d::Zero(), Matrix3d::Zero()).finished(); // 3x9
-    Matrix9d process_noise;
-    process_noise << Matrix3d::Identity() * pow(dt,4)/4, Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Zero(),
-                     Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Identity() * pow(dt,2), Matrix3d::Zero(),
-                     Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Identity() * pow(sigma_bias,2);
+    Matrix12d initial_covariance = Matrix12d::Identity();
+    Matrix12d jacobian_matrix = Matrix12d::Identity(); // will be updated in the kalman filter loop
+    MatrixHd observation_matrix = (MatrixHd() << Matrix3d::Identity(), Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Zero()).finished(); // 3x9
+    Matrix12d process_noise;
+    process_noise << Matrix3d::Identity() * pow(dt,4)/4, Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Zero(), Matrix3d::Zero(),
+                     Matrix3d::Identity() * pow(dt,3)/2, Matrix3d::Identity() * pow(dt,2), Matrix3d::Zero(), Matrix3d::Zero(),
+                     Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Identity() * pow(sigma_bias,2), Matrix3d::Zero(),
+                     Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Zero(), Matrix3d::Identity() * pow(sigma_dtheata,2); 
     Matrix3d measurement_noise = Matrix3d::Identity() * pow(sigma_measurement,2); // 
 
     kalman_filter_ptr_l_.reset(new KalmanFilter(initial_covariance, jacobian_matrix, observation_matrix, process_noise, measurement_noise));
@@ -187,13 +194,13 @@ void MmteleopIMU::tasks_init()
         hand_ori_start_r_ = imu_ori_r_;
 
         // Initialize the kalman filter
-        Vector3d initial_bias = (Vector3d() <<-0.007, 0.002, 0.055).finished();
+        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
         // Left kalman filter
-        Vector9d initial_state_l = (Vector9d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias).finished();
+        Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
 
         // right kalman filter
-        Vector9d initial_state_r = (Vector9d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias).finished();
+        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
         kalman_filter_ptr_r_->set_initial_state(initial_state_r);
 
         // record data
@@ -210,13 +217,13 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
 
-        Eigen::Vector9d hand_filtered_l = kalman_filter_ptr_l_->get_state();
+        Eigen::Vector12d hand_filtered_l = kalman_filter_ptr_l_->get_state();
         // if (new_imu_data_l_){
-        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_ * 10.0, imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_.matrix(), 0.008);
         // new_imu_data_l_ = false;
         // }
         // if (new_tracking_data_){
-        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_, current_left_hand, imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_.matrix(), 0.008);
         // }
         // RCLCPP_INFO(this->get_logger(), "hand_filtered_l: [%f, %f, %f]", hand_filtered_l(0), hand_filtered_l(1), hand_filtered_l(2));
 
@@ -247,15 +254,15 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
         
-        Eigen::Vector9d hand_filtered_r = kalman_filter_ptr_r_->get_state();
+        Eigen::Vector12d hand_filtered_r = kalman_filter_ptr_r_->get_state();
 
         // if (new_imu_data_r_){
-        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_, imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_.matrix(), 0.008);
         //     new_imu_data_r_ = false;
         // }
 
         // if (new_tracking_data_){
-        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_, current_right_hand, imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_.matrix(), 0.008);
         //     new_tracking_data_ = false;
         // }
 
