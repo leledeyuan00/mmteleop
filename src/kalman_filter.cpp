@@ -46,9 +46,6 @@ Vector9d KalmanFilter::update(const Vector3d imu_acc,const Vector3d hand_positio
     // Insert IMU accleration instead of estimated acceleration
     Vector3d measurement_v = hand_position;
 
-    // Prio estimation
-    prio_estimation(imu_acc, rot, dt);
-
     // Kalman gain
     Matrix3d S = observation_matrix_* covariance_ * observation_matrix_.transpose() + measurement_noise_;
     MatrixKd kalman_gain = (covariance_ * observation_matrix_.transpose()) * S.inverse();

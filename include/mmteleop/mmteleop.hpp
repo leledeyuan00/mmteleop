@@ -13,6 +13,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/empty.hpp>
 
 #include <eigen3/Eigen/Dense>
 
@@ -57,6 +58,7 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr right_pose_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr left_pose_pub_;
+    rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr status_pub_;
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr start_service_;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr switch_id_service_;

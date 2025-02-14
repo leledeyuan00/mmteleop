@@ -14,6 +14,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/empty.hpp>
 
 #include "kdl/frames.hpp"
 #include "tf2_eigen/tf2_eigen.hpp"
@@ -54,6 +55,7 @@ private:
     // sub
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_l_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_r_;
+    rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr body_tracking_status_sub_;
 
     // srvs
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr teleop_srv_;
@@ -95,6 +97,9 @@ private:
     Eigen::Quaterniond hand_ori_start_r_;
     bool y_axis_mirror_{false};
     bool emergency_stop_{false};
+    bool new_tracking_data_{false};
+    bool new_imu_data_l_{false};
+    bool new_imu_data_r_{false};
 
     // recording the data to txt file
     bool start_record_data_;

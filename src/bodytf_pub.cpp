@@ -40,6 +40,11 @@ void MMTeleop::ros_init()
         }
     );
 
+    status_pub_ = this->create_publisher<std_msgs::msg::Empty>(
+        "/body_tracking_status", rclcpp::SystemDefaultsQoS()
+    );
+
+
     switch_id_service_ = this->create_service<std_srvs::srv::SetBool>(
         "/switch_id", 
         [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> request, std::shared_ptr<std_srvs::srv::SetBool::Response> response) -> void
@@ -223,6 +228,9 @@ void MMTeleop::get_hand_position(std::vector<Eigen::Vector3d> body_positions, Ei
     }
     tf_broadcaster_->sendTransform(left_hand_transform); // Publish the neck transform for visualization in rviz
 
+    // publish a message to indicate the new body tracking data
+    std_msgs::msg::Empty status_msg;
+    status_pub_->publish(status_msg);
 }
 
 void MMTeleop::get_nearest_id(int &current_id, std::vector<int> ids, bool dir)

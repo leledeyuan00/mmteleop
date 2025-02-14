@@ -28,6 +28,7 @@ void MmteleopIMU::custom_init()
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_l_ = true;
             }
+            new_imu_data_l_ = true;
         });
     
     imu_sub_r_ = this->create_subscription<sensor_msgs::msg::Imu>(
@@ -42,6 +43,13 @@ void MmteleopIMU::custom_init()
                 RCLCPP_INFO(this->get_logger(), "IMU received");
                 imu_received_r_ = true;
             }
+            new_imu_data_r_ = true;
+        });
+
+    body_tracking_status_sub_ = this->create_subscription<std_msgs::msg::Empty>(
+        "/body_tracking_status", 10, [this](const std_msgs::msg::Empty::SharedPtr msg) {
+            new_tracking_data_ = true;
+            RCLCPP_INFO(this->get_logger(), "New tracking data received");
         });
 
     // service
@@ -69,7 +77,7 @@ void MmteleopIMU::custom_init()
     // Kalman filter for calculating cartesian velocities
     double dt = 0.008; // 4 ms
     double sigma_bias = 0.3;
-    double sigma_measurement = 1000;
+    double sigma_measurement = 10.0;
     // std::shared_ptr<KalmanFilter> kalman_filter_ptr;
     Matrix9d initial_covariance = Matrix9d::Identity();
     Matrix9d jacobian_matrix = Matrix9d::Identity(); // will be updated in the kalman filter loop
@@ -202,7 +210,15 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
 
-        Eigen::Vector9d hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_, current_left_hand, imu_ori_l_.matrix(), 0.008);
+        Eigen::Vector9d hand_filtered_l = kalman_filter_ptr_l_->get_state();
+        // if (new_imu_data_l_){
+        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_ * 10.0, imu_ori_l_.matrix(), 0.008);
+        // new_imu_data_l_ = false;
+        // }
+        // if (new_tracking_data_){
+        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_, current_left_hand, imu_ori_l_.matrix(), 0.008);
+        // }
+        // RCLCPP_INFO(this->get_logger(), "hand_filtered_l: [%f, %f, %f]", hand_filtered_l(0), hand_filtered_l(1), hand_filtered_l(2));
 
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_l = robot_l.start_pose;
@@ -216,9 +232,9 @@ void MmteleopIMU::tasks_init()
         
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
         target_pose_l.header.stamp = this->now();
-        target_pose_l.pose.position.x = start_pose_l.pose.position.x  - (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 1.0;
-        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 1.0;
-        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 1.0;
+        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 0.8;
+        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 0.8;
+        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 0.8;
 
         target_pose_l.pose.orientation.x = robot_ori_target_l.x();
         target_pose_l.pose.orientation.y = robot_ori_target_l.y();
@@ -231,7 +247,17 @@ void MmteleopIMU::tasks_init()
         // Update kalman filter
         Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
         
-        Eigen::Vector9d hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_, current_right_hand, imu_ori_r_.matrix(), 0.008);
+        Eigen::Vector9d hand_filtered_r = kalman_filter_ptr_r_->get_state();
+
+        // if (new_imu_data_r_){
+        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_, imu_ori_r_.matrix(), 0.008);
+        //     new_imu_data_r_ = false;
+        // }
+
+        // if (new_tracking_data_){
+        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_, current_right_hand, imu_ori_r_.matrix(), 0.008);
+        //     new_tracking_data_ = false;
+        // }
 
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_r = robot_r.start_pose;
@@ -246,9 +272,9 @@ void MmteleopIMU::tasks_init()
        
         geometry_msgs::msg::PoseStamped target_pose_r = robot_r.start_pose;
         target_pose_r.header.stamp = this->now();
-        target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 1.0;
-        target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 1.0;
-        target_pose_r.pose.position.z = start_pose_r.pose.position.z  + (hand_pose_filtered_r(2) - hand_pose_start_r_(2)) * 1.0;
+        target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 0.8;
+        target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 0.8;
+        target_pose_r.pose.position.z = start_pose_r.pose.position.z  + (hand_pose_filtered_r(2) - hand_pose_start_r_(2)) * 0.8;
         
         target_pose_r.pose.orientation.x = robot_ori_target_r.x();
         target_pose_r.pose.orientation.y = robot_ori_target_r.y();
