@@ -59,9 +59,9 @@ Vector12d KalmanFilter::update(const Vector3d imu_acc,const Vector3d hand_positi
     state_ = state_ + kalman_gain * (measurement_v - observation_matrix_ * state_);
 
     // delta_quat_offset
-    Vector3d dtheta = state_.block<3,1>(9,0) * 0.01;
+    Vector3d dtheta = state_.block<3,1>(9,0);
     Quaterniond delta_quat_offset = small_angle_quaternion(dtheta);
-    quat_offset_nominal_ = (quat_offset_nominal_ * delta_quat_offset).normalized();
+    quat_offset_nominal_ = (delta_quat_offset.conjugate() * quat_offset_nominal_ ).normalized();
 
     // Update covariance
     covariance_ = (Matrix12d::Identity() - kalman_gain * observation_matrix_) * covariance_;
