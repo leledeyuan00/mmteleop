@@ -252,7 +252,7 @@ void MmteleopIMU::tasks_init()
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
 
         // right kalman filter
-        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), state_l_.block<3,1>(6,0), Vector3d::Zero()).finished();
+        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), state_r_.block<3,1>(6,0), Vector3d::Zero()).finished();
         kalman_filter_ptr_r_->set_initial_state(initial_state_r);
 
         // record data
