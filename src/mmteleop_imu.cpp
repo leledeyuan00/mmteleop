@@ -183,6 +183,58 @@ void MmteleopIMU::tasks_init()
         }
     }));
 
+    // Pre calibration for the kalman filter
+    task_pushback(TaskPtr("Pre calibration for the kalman filter...... After around 3~5s press the start again", [this](){
+        // Initialize the start position
+        body_neck_start_ = body_neck_;
+        hand_pose_start_l_ = (body_neck_start_.inverse() * body_left_hand_).translation(); // The hand pose is relative to the neck
+        hand_pose_start_r_ = (body_neck_start_.inverse() * body_right_hand_).translation(); // The hand pose is relative to the neck
+
+        // Initialize the kalman filter
+        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
+        // Left kalman filter
+        Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
+        kalman_filter_ptr_l_->set_initial_state(initial_state_l);
+
+        // right kalman filter
+        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
+        kalman_filter_ptr_r_->set_initial_state(initial_state_r);
+
+        teleop_start_ = false;
+    },
+    [this](){
+        auto robot_l = get_robot_state_l();
+        auto robot_r = get_robot_state_r();
+        Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
+        // Update tf
+        tf_update();
+        
+        // Left
+        // Update kalman filter
+        Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
+
+        Eigen::Vector12d hand_filtered_l = kalman_filter_ptr_l_->get_state();
+        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_.matrix(), 0.008);
+ 
+
+        // Right
+        // Update kalman filter
+        Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
+        
+        Eigen::Vector12d hand_filtered_r = kalman_filter_ptr_r_->get_state();
+        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_.matrix(), 0.008);
+
+        if (teleop_start_ && imu_received_l_ && imu_received_r_)
+        {
+            RCLCPP_INFO(this->get_logger(), "Teleop service is on");
+            state_l_ = kalman_filter_ptr_l_->get_state();
+            state_r_ = kalman_filter_ptr_r_->get_state();
+            set_task_finished();
+        }
+    }));
+
     // Start Teleop
     task_pushback(TaskPtr("Start Teleop", [this](){
         tf_update();
@@ -196,11 +248,11 @@ void MmteleopIMU::tasks_init()
         // Initialize the kalman filter
         Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
         // Left kalman filter
-        Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
+        Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), state_l_.block<3,1>(6,0), Vector3d::Zero()).finished();
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
 
         // right kalman filter
-        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
+        Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), state_l_.block<3,1>(6,0), Vector3d::Zero()).finished();
         kalman_filter_ptr_r_->set_initial_state(initial_state_r);
 
         // record data
@@ -239,9 +291,9 @@ void MmteleopIMU::tasks_init()
         
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
         target_pose_l.header.stamp = this->now();
-        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 0.8;
-        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 0.8;
-        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 0.8;
+        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 1.0;
+        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 1.0;
+        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 1.0;
 
         target_pose_l.pose.orientation.x = robot_ori_target_l.x();
         target_pose_l.pose.orientation.y = robot_ori_target_l.y();
@@ -279,9 +331,9 @@ void MmteleopIMU::tasks_init()
        
         geometry_msgs::msg::PoseStamped target_pose_r = robot_r.start_pose;
         target_pose_r.header.stamp = this->now();
-        target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 0.8;
-        target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 0.8;
-        target_pose_r.pose.position.z = start_pose_r.pose.position.z  + (hand_pose_filtered_r(2) - hand_pose_start_r_(2)) * 0.8;
+        target_pose_r.pose.position.x = start_pose_r.pose.position.x  + (hand_pose_filtered_r(0) - hand_pose_start_r_(0)) * 1.0;
+        target_pose_r.pose.position.y = start_pose_r.pose.position.y  + (hand_pose_filtered_r(1) - hand_pose_start_r_(1)) * 1.0;
+        target_pose_r.pose.position.z = start_pose_r.pose.position.z  + (hand_pose_filtered_r(2) - hand_pose_start_r_(2)) * 1.0;
         
         target_pose_r.pose.orientation.x = robot_ori_target_r.x();
         target_pose_r.pose.orientation.y = robot_ori_target_r.y();

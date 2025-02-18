@@ -100,6 +100,8 @@ private:
     bool new_tracking_data_{false};
     bool new_imu_data_l_{false};
     bool new_imu_data_r_{false};
+    Vector12d state_l_;
+    Vector12d state_r_;
 
     // recording the data to txt file
     bool start_record_data_;

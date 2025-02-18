@@ -11,6 +11,7 @@ KalmanFilter::KalmanFilter(const Matrix12d& initial_covariance,
     observation_matrix_ = observation_matrix;
     process_noise_ = process_noise;
     measurement_noise_ = measurement_noise;
+    quat_offset_nominal_ = Quaterniond(1,0,0,0);
 }
 
 Vector12d KalmanFilter::prio_estimation(Vector3d imu_acc, Matrix3d rot, double dt)

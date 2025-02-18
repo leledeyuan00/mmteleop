@@ -26,7 +26,6 @@ public:
 
     void set_initial_state(const Vector12d& initial_state){
         state_ = initial_state;
-        quat_offset_nominal_ = Quaterniond(1,0,0,0);
     }
 
     Vector12d prio_estimation(Vector3d imu_acc, Matrix3d rot, double dt);
