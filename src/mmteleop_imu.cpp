@@ -191,7 +191,7 @@ void MmteleopIMU::tasks_init()
         hand_pose_start_r_ = (body_neck_start_.inverse() * body_right_hand_).translation(); // The hand pose is relative to the neck
 
         // Initialize the kalman filter
-        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.098650440417530).finished();
+        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
         // Left kalman filter
         Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
