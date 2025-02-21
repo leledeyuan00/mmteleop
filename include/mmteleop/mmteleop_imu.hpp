@@ -24,13 +24,13 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_msgs/msg/tf_message.hpp>
 
-// low pass filter
-#include <control_toolbox/control_toolbox/filters.hpp>
-
 // custom
 #include "cartesian_controller_msgs/srv/joint_move.hpp"
 #include "garment_motion_base/garment_motion_base.hpp"
 #include "mmteleop/kalman_filter.hpp"
+
+// low pass filter
+#include "mmteleop/low_pass_filter.hpp"
 
 namespace garment_research
 {
@@ -89,6 +89,10 @@ private:
     // kalman filter
     std::shared_ptr<KalmanFilter> kalman_filter_ptr_l_;
     std::shared_ptr<KalmanFilter> kalman_filter_ptr_r_;
+
+    // lowe pass filter
+    std::shared_ptr<LowPassFilter> low_pass_filter_ptr_l_;
+    std::shared_ptr<LowPassFilter> low_pass_filter_ptr_r_;
 
     // teleop states
     Eigen::Vector3d hand_pose_start_l_;

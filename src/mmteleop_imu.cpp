@@ -24,8 +24,8 @@ void MmteleopIMU::custom_init()
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_l_.linear_acceleration.x, imu_msg_l_.linear_acceleration.y, imu_msg_l_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
             // imu_acc_l_ = (imu_ori_l_.inverse() * imu_acc);
-            Vector3d imu_acc_l_ = imu_acc * 10;
-            imu_acc_l_buffer_.push_back(imu_acc_l_);
+            Vector3d imu_acc_l = imu_acc * 10;
+            imu_acc_l_buffer_.push_back(imu_acc_l);
             imu_acc_l_buffer_.erase(imu_acc_l_buffer_.begin());
             if (!imu_received_l_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
@@ -42,8 +42,8 @@ void MmteleopIMU::custom_init()
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_r_.linear_acceleration.x, imu_msg_r_.linear_acceleration.y, imu_msg_r_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
             // imu_acc_r_ = -1*(imu_ori_r_.inverse() * imu_acc + g);
-            Vector3d imu_acc_r_ = imu_acc * 10;
-            imu_acc_r_buffer_.push_back(imu_acc_r_);
+            Vector3d imu_acc_r = imu_acc * 10;
+            imu_acc_r_buffer_.push_back(imu_acc_r);
             imu_acc_r_buffer_.erase(imu_acc_r_buffer_.begin());
             if (!imu_received_r_){
                 RCLCPP_INFO(this->get_logger(), "IMU received");
@@ -260,6 +260,11 @@ void MmteleopIMU::tasks_init()
         Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), state_r_.block<3,1>(6,0), Vector3d::Zero()).finished();
         kalman_filter_ptr_r_->set_initial_state(initial_state_r);
 
+        // low pass filter
+        Eigen::Vector3d alpha(0.02, 0.02, 0.02);
+        low_pass_filter_ptr_l_.reset(new LowPassFilter(alpha));
+        low_pass_filter_ptr_r_.reset(new LowPassFilter(alpha));
+
         // record data
         record_data_init();
     },
@@ -287,7 +292,8 @@ void MmteleopIMU::tasks_init()
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_l = robot_l.start_pose;
         Eigen::Quaterniond robot_ori_start_l = Eigen::Quaterniond(start_pose_l.pose.orientation.w, start_pose_l.pose.orientation.x, start_pose_l.pose.orientation.y, start_pose_l.pose.orientation.z);
-        Eigen::Vector3d hand_pose_filtered_l = hand_filtered_l.block<3,1>(0,0);
+        // low pass filter
+        Eigen::Vector3d hand_pose_filtered_l = low_pass_filter_ptr_l_->update(hand_filtered_l.block<3,1>(0,0));
 
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
@@ -326,7 +332,9 @@ void MmteleopIMU::tasks_init()
         // Calculate the start pose
         geometry_msgs::msg::PoseStamped start_pose_r = robot_r.start_pose;
         Eigen::Quaterniond robot_ori_start_r = Eigen::Quaterniond(start_pose_r.pose.orientation.w, start_pose_r.pose.orientation.x, start_pose_r.pose.orientation.y, start_pose_r.pose.orientation.z);
-        Eigen::Vector3d hand_pose_filtered_r = hand_filtered_r.block<3,1>(0,0);
+        
+        // low pass filter
+        Eigen::Vector3d hand_pose_filtered_r = low_pass_filter_ptr_r_->update(hand_filtered_r.block<3,1>(0,0));
         
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;

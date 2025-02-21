@@ -109,7 +109,7 @@ void body_record::robot_update()
 
 void body_record::loop()
 {
-    rclcpp::Rate loop_rate(100);
+    rclcpp::Rate loop_rate(125);
 
     while (rclcpp::ok())
     {
