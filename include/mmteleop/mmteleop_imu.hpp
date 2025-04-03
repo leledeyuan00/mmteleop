@@ -99,7 +99,7 @@ private:
     Eigen::Vector3d hand_pose_start_r_;
     Eigen::Quaterniond hand_ori_start_l_;
     Eigen::Quaterniond hand_ori_start_r_;
-    bool y_axis_mirror_{false};
+    bool axis_mirror_{false};
     bool emergency_stop_{false};
     bool new_tracking_data_{false};
     bool new_imu_data_l_{false};

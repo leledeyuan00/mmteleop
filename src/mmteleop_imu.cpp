@@ -34,7 +34,7 @@ void MmteleopIMU::custom_init()
             new_imu_data_l_ = true;
         });
     
-    imu_acc_r_buffer_.resize(30); // for 240 ms
+    imu_acc_r_buffer_.resize(25); // for 240 ms
     imu_sub_r_ = this->create_subscription<sensor_msgs::msg::Imu>(
         "/right_cartesian_compliance_controller/imu", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_r_ = *msg;
@@ -161,7 +161,9 @@ void MmteleopIMU::tasks_init()
 
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
-        std::vector<double> left_home_joints = {-0.568016, -0.082871, 2.115638, 0.011060, -1.239965, 0.353554};
+        std::vector<double> left_home_joints = {0.196579, 0.252754, 1.681293, 1.417742, -1.729622, -0.403405};
+
+        // std::vector<double> left_home_joints = {-0.568016, -0.082871, 2.115638, 0.011060, -1.239965, 0.353554};
         std::vector<double> right_home_joints = {0.497529, -0.080796, 2.134854, -0.084095, -1.352510, -0.399333};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
@@ -297,7 +299,7 @@ void MmteleopIMU::tasks_init()
 
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
-        Eigen::Quaterniond ori_inc_trans_l =  y_axis_mirror_ ?  Eigen::Quaterniond(ori_inc_l.w(), ori_inc_l.x(), -ori_inc_l.y(), ori_inc_l.z()) : ori_inc_l; // This is a trick to convert the orientation from the right hand to the left hand rotation
+        Eigen::Quaterniond ori_inc_trans_l =  axis_mirror_ ?  Eigen::Quaterniond(ori_inc_l.w(), ori_inc_l.x(), -ori_inc_l.y(), -ori_inc_l.z()) : ori_inc_l; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_l =  ori_inc_trans_l * robot_ori_start_l;
         
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
@@ -338,7 +340,7 @@ void MmteleopIMU::tasks_init()
         
         // Calculate the target pose
         Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;
-        Eigen::Quaterniond ori_inc_trans_r = y_axis_mirror_ ? Eigen::Quaterniond(ori_inc_r.w(), ori_inc_r.x(), -ori_inc_r.y(), ori_inc_r.z()) : ori_inc_r; // This is a trick to convert the orientation from the right hand to the left hand rotation
+        Eigen::Quaterniond ori_inc_trans_r = axis_mirror_ ? Eigen::Quaterniond(ori_inc_r.w(), ori_inc_r.x(), -ori_inc_r.y(), -ori_inc_r.z()) : ori_inc_r; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_r =  ori_inc_trans_r * robot_ori_start_r;
 
        
