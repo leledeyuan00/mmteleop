@@ -73,7 +73,7 @@ private:
     sensor_msgs::msg::Imu imu_msg_l_;
     sensor_msgs::msg::Imu imu_msg_r_;
     bool imu_received_l_{false};
-    bool imu_received_r_{false};
+    bool imu_received_r_{true};
 
     // body transofrm matrix
     Eigen::Isometry3d body_neck_, body_neck_start_;
@@ -83,8 +83,8 @@ private:
     // IMU
     std::vector<Eigen::Vector3d> imu_acc_l_buffer_;
     std::vector<Eigen::Vector3d> imu_acc_r_buffer_;
-    Eigen::Quaterniond imu_ori_l_;
-    Eigen::Quaterniond imu_ori_r_;
+    std::vector<Eigen::Quaterniond> imu_ori_l_buffer_;
+    std::vector<Eigen::Quaterniond> imu_ori_r_buffer_;
 
     // kalman filter
     std::shared_ptr<KalmanFilter> kalman_filter_ptr_l_;
@@ -106,10 +106,11 @@ private:
     bool new_imu_data_r_{false};
     Vector12d state_l_;
     Vector12d state_r_;
+    std::string side_{"left"};
 
     // recording the data to txt file
     bool start_record_data_;
-    std::ofstream data_file_;    
+    std::ofstream data_file_;
 };
 
 } // namespace garment_research

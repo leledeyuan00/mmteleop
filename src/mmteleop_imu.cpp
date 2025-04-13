@@ -17,14 +17,17 @@ void MmteleopIMU::custom_init()
 {
     // imu sub
     imu_acc_l_buffer_.resize(30); // for 240 ms
+    imu_ori_l_buffer_.resize(30);
     imu_sub_l_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/left_cartesian_compliance_controller/imu", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
+        "/imu/data", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_l_ = *msg;
-            imu_ori_l_ = Eigen::Quaterniond(imu_msg_l_.orientation.w, imu_msg_l_.orientation.x, imu_msg_l_.orientation.y, imu_msg_l_.orientation.z);
-            Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_l_.linear_acceleration.x, imu_msg_l_.linear_acceleration.y, imu_msg_l_.linear_acceleration.z);
+            Eigen::Quaterniond imu_ori_l = Eigen::Quaterniond(imu_msg_l_.orientation.w, imu_msg_l_.orientation.x, imu_msg_l_.orientation.y, -imu_msg_l_.orientation.z);
+            imu_ori_l_buffer_.push_back(imu_ori_l);
+            imu_ori_l_buffer_.erase(imu_ori_l_buffer_.begin());
+            Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_l_.linear_acceleration.x, imu_msg_l_.linear_acceleration.y, -imu_msg_l_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
-            // imu_acc_l_ = (imu_ori_l_.inverse() * imu_acc);
-            Vector3d imu_acc_l = imu_acc * 10;
+            // imu_acc_l_ = (imu_ori_l_buffer_[0].inverse() * imu_acc);
+            Vector3d imu_acc_l = imu_acc;
             imu_acc_l_buffer_.push_back(imu_acc_l);
             imu_acc_l_buffer_.erase(imu_acc_l_buffer_.begin());
             if (!imu_received_l_){
@@ -35,13 +38,16 @@ void MmteleopIMU::custom_init()
         });
     
     imu_acc_r_buffer_.resize(30); // for 240 ms
+    imu_ori_r_buffer_.resize(30);
     imu_sub_r_ = this->create_subscription<sensor_msgs::msg::Imu>(
         "/right_cartesian_compliance_controller/imu", 10, [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_r_ = *msg;
-            imu_ori_r_ = Eigen::Quaterniond(imu_msg_r_.orientation.w, imu_msg_r_.orientation.x, imu_msg_r_.orientation.y, imu_msg_r_.orientation.z);
+            Eigen::Quaterniond imu_ori_r = Eigen::Quaterniond(imu_msg_r_.orientation.w, imu_msg_r_.orientation.x, imu_msg_r_.orientation.y, imu_msg_r_.orientation.z);
+            imu_ori_r_buffer_.push_back(imu_ori_r);
+            imu_ori_r_buffer_.erase(imu_ori_r_buffer_.begin());
             Eigen::Vector3d imu_acc = Eigen::Vector3d(imu_msg_r_.linear_acceleration.x, imu_msg_r_.linear_acceleration.y, imu_msg_r_.linear_acceleration.z);
             // Eigen::Vector3d g(0, 0, 0.981);
-            // imu_acc_r_ = -1*(imu_ori_r_.inverse() * imu_acc + g);
+            // imu_acc_r_ = -1*(imu_ori_r_buffer_[0].inverse() * imu_acc + g);
             Vector3d imu_acc_r = imu_acc * 10;
             imu_acc_r_buffer_.push_back(imu_acc_r);
             imu_acc_r_buffer_.erase(imu_acc_r_buffer_.begin());
@@ -80,7 +86,7 @@ void MmteleopIMU::custom_init()
 
     // Initialize Kalman
     // Kalman filter for calculating cartesian velocities
-    double dt = 0.008; // 4 ms
+    double dt = 0.004; // 4 ms
     double sigma_bias = 0.3;
     double sigma_measurement = 10.0;
     double sigma_dtheata = 1.0;
@@ -174,7 +180,7 @@ void MmteleopIMU::tasks_init()
         tf_update();
         // RCLCPP_INFO(this->get_logger(), "[%f, %f, %f], [%f, %f, %f]", imu_acc_l_(0), imu_acc_l_(1), imu_acc_l_(2),body_left_hand_.translation().x(), body_left_hand_.translation().y(), body_left_hand_.translation().z());
         // print the left orientation
-        // RCLCPP_INFO(this->get_logger(), "Left orientation is: [%f, %f, %f, %f]", imu_ori_l_.x(), imu_ori_l_.y(), imu_ori_l_.z(), imu_ori_l_.w());
+        // RCLCPP_INFO(this->get_logger(), "Left orientation is: [%f, %f, %f, %f]", imu_ori_l_buffer_[0].x(), imu_ori_l_buffer_[0].y(), imu_ori_l_buffer_[0].z(), imu_ori_l_buffer_[0].w());
 
         if (teleop_start_ && imu_received_l_ && imu_received_r_)
         {
@@ -191,10 +197,12 @@ void MmteleopIMU::tasks_init()
         hand_pose_start_r_ = (body_neck_start_.inverse() * body_right_hand_).translation(); // The hand pose is relative to the neck
 
         // Initialize the kalman filter
-        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
+        Vector3d initial_bias = (Vector3d() <<0.005282, 0.018771, 0.025059).finished();
+        Quaterniond initial_quat = Quaterniond( 0.807002, -0.002920, 0.004156, -0.590527);
         // Left kalman filter
         Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
+        kalman_filter_ptr_l_->set_quat_offset_nominal(initial_quat);
 
         // right kalman filter
         Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), initial_bias, Vector3d::Zero()).finished();
@@ -214,8 +222,8 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d current_left_hand = (body_neck_start_.inverse() * body_left_hand_).translation();
 
         Eigen::Vector12d hand_filtered_l = kalman_filter_ptr_l_->get_state();
-        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_.matrix(), 0.008);
-        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_buffer_[0].matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_buffer_[0].matrix(), 0.008);
  
 
         // Right
@@ -223,8 +231,8 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d current_right_hand = (body_neck_start_.inverse() * body_right_hand_).translation();
         
         Eigen::Vector12d hand_filtered_r = kalman_filter_ptr_r_->get_state();
-        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_.matrix(), 0.008);
-        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_buffer_[0].matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_buffer_[0].matrix(), 0.008);
 
         if (teleop_start_ && imu_received_l_ && imu_received_r_)
         {
@@ -232,10 +240,14 @@ void MmteleopIMU::tasks_init()
             state_l_ = kalman_filter_ptr_l_->get_state();
             state_r_ = kalman_filter_ptr_r_->get_state();
             Vector3d current_bias_l = state_l_.block<3,1>(6,0);
+            Quaterniond quat_offset_l = kalman_filter_ptr_l_->get_quat_offset();
             Vector3d current_bias_r = state_r_.block<3,1>(6,0);
+            Quaterniond quat_offset_r = kalman_filter_ptr_r_->get_quat_offset();
 
             RCLCPP_INFO(this->get_logger(), "Left bias is: [%f, %f, %f]", current_bias_l(0), current_bias_l(1), current_bias_l(2));
+            RCLCPP_INFO(this->get_logger(), "Left Quat offset is: [%f, %f, %f, %f]", quat_offset_l.x(), quat_offset_l.y(), quat_offset_l.z(), quat_offset_l.w());
             RCLCPP_INFO(this->get_logger(), "Right bias is: [%f, %f, %f]", current_bias_r(0), current_bias_r(1), current_bias_r(2));
+            RCLCPP_INFO(this->get_logger(), "Right Quat offset is: [%f, %f, %f, %f]", quat_offset_r.x(), quat_offset_r.y(), quat_offset_r.z(), quat_offset_r.w());
             set_task_finished();
         }
     }));
@@ -247,14 +259,14 @@ void MmteleopIMU::tasks_init()
         body_neck_start_ = body_neck_;
         hand_pose_start_l_ = (body_neck_start_.inverse() * body_left_hand_).translation(); // The hand pose is relative to the neck
         hand_pose_start_r_ = (body_neck_start_.inverse() * body_right_hand_).translation(); // The hand pose is relative to the neck
-        hand_ori_start_l_ = imu_ori_l_;
-        hand_ori_start_r_ = imu_ori_r_;
+        hand_ori_start_l_ = imu_ori_l_buffer_[0];
+        hand_ori_start_r_ = imu_ori_r_buffer_[0];
 
         // Initialize the kalman filter
-        Vector3d initial_bias = (Vector3d() <<0.132193723718177,-0.0412141803030037,0.498650440417530).finished();
         // Left kalman filter
         Vector12d initial_state_l = (Vector12d() << hand_pose_start_l_, Vector3d::Zero(), state_l_.block<3,1>(6,0), Vector3d::Zero()).finished();
         kalman_filter_ptr_l_->set_initial_state(initial_state_l);
+        kalman_filter_ptr_l_->set_measurement_noise(Matrix3d::Identity() * pow(100,2)); // reduce the convidence of the camera tracking position
 
         // right kalman filter
         Vector12d initial_state_r = (Vector12d() << hand_pose_start_r_, Vector3d::Zero(), state_r_.block<3,1>(6,0), Vector3d::Zero()).finished();
@@ -281,11 +293,11 @@ void MmteleopIMU::tasks_init()
 
         Eigen::Vector12d hand_filtered_l = kalman_filter_ptr_l_->get_state();
         // if (new_imu_data_l_){
-        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->prio_estimation(imu_acc_l_buffer_[0] , imu_ori_l_buffer_[0].matrix(), 0.008);
         // new_imu_data_l_ = false;
         // }
         // if (new_tracking_data_){
-        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_.matrix(), 0.008);
+        hand_filtered_l = kalman_filter_ptr_l_->update(imu_acc_l_buffer_[0], current_left_hand, imu_ori_l_buffer_[0].matrix(), 0.008);
         // }
         // RCLCPP_INFO(this->get_logger(), "hand_filtered_l: [%f, %f, %f]", hand_filtered_l(0), hand_filtered_l(1), hand_filtered_l(2));
 
@@ -296,15 +308,15 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d hand_pose_filtered_l = low_pass_filter_ptr_l_->update(hand_filtered_l.block<3,1>(0,0));
 
         // Calculate the target pose
-        Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_;
+        Eigen::Quaterniond ori_inc_l =  hand_ori_start_l_.inverse() * imu_ori_l_buffer_[0];
         Eigen::Quaterniond ori_inc_trans_l =  y_axis_mirror_ ?  Eigen::Quaterniond(ori_inc_l.w(), ori_inc_l.x(), -ori_inc_l.y(), ori_inc_l.z()) : ori_inc_l; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_l =  ori_inc_trans_l * robot_ori_start_l;
         
         geometry_msgs::msg::PoseStamped target_pose_l = robot_l.start_pose;
         target_pose_l.header.stamp = this->now();
-        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 0.8;
-        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 0.8;
-        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 0.8;
+        target_pose_l.pose.position.x = start_pose_l.pose.position.x  + (hand_pose_filtered_l(0) - hand_pose_start_l_(0)) * 1.0;
+        target_pose_l.pose.position.y = start_pose_l.pose.position.y  + (hand_pose_filtered_l(1) - hand_pose_start_l_(1)) * 1.0;
+        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + (hand_pose_filtered_l(2) - hand_pose_start_l_(2)) * 1.0;
 
         target_pose_l.pose.orientation.x = robot_ori_target_l.x();
         target_pose_l.pose.orientation.y = robot_ori_target_l.y();
@@ -320,12 +332,12 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector12d hand_filtered_r = kalman_filter_ptr_r_->get_state();
 
         // if (new_imu_data_r_){
-        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->prio_estimation(imu_acc_r_buffer_[0], imu_ori_r_buffer_[0].matrix(), 0.008);
         //     new_imu_data_r_ = false;
         // }
 
         // if (new_tracking_data_){
-        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_.matrix(), 0.008);
+        hand_filtered_r = kalman_filter_ptr_r_->update(imu_acc_r_buffer_[0], current_right_hand, imu_ori_r_buffer_[0].matrix(), 0.008);
         //     new_tracking_data_ = false;
         // }
 
@@ -337,7 +349,7 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d hand_pose_filtered_r = low_pass_filter_ptr_r_->update(hand_filtered_r.block<3,1>(0,0));
         
         // Calculate the target pose
-        Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_;
+        Eigen::Quaterniond ori_inc_r =  hand_ori_start_r_.inverse() * imu_ori_r_buffer_[0];
         Eigen::Quaterniond ori_inc_trans_r = y_axis_mirror_ ? Eigen::Quaterniond(ori_inc_r.w(), ori_inc_r.x(), -ori_inc_r.y(), ori_inc_r.z()) : ori_inc_r; // This is a trick to convert the orientation from the right hand to the left hand rotation
         Eigen::Quaterniond robot_ori_target_r =  ori_inc_trans_r * robot_ori_start_r;
 
@@ -358,8 +370,19 @@ void MmteleopIMU::tasks_init()
         emergenccy_detection();
         if (!emergency_stop_)
         {
-            set_target_pose_l(target_pose_l);
-            set_target_pose_r(target_pose_r);
+            if (side_ == "left")
+            {
+                set_target_pose_l(target_pose_l);
+            }
+            else if (side_ == "right")
+            {
+                set_target_pose_r(target_pose_r);
+            }
+            else if (side_ == "both")
+            {
+                set_target_pose_l(target_pose_l);
+                set_target_pose_r(target_pose_r);
+            }
         }        
         
         // record data
@@ -386,6 +409,18 @@ void MmteleopIMU::tasks_init()
             data_file_.close();
             // goto_init_task();
             set_task_finished();
+
+            state_l_ = kalman_filter_ptr_l_->get_state();
+            state_r_ = kalman_filter_ptr_r_->get_state();
+            Vector3d current_bias_l = state_l_.block<3,1>(6,0);
+            Quaterniond quat_offset_l = kalman_filter_ptr_l_->get_quat_offset();
+            Vector3d current_bias_r = state_r_.block<3,1>(6,0);
+            Quaterniond quat_offset_r = kalman_filter_ptr_r_->get_quat_offset();
+
+            RCLCPP_INFO(this->get_logger(), "Left bias is: [%f, %f, %f]", current_bias_l(0), current_bias_l(1), current_bias_l(2));
+            RCLCPP_INFO(this->get_logger(), "Left Quat offset is: [%f, %f, %f, %f]", quat_offset_l.x(), quat_offset_l.y(), quat_offset_l.z(), quat_offset_l.w());
+            RCLCPP_INFO(this->get_logger(), "Right bias is: [%f, %f, %f]", current_bias_r(0), current_bias_r(1), current_bias_r(2));
+            RCLCPP_INFO(this->get_logger(), "Right Quat offset is: [%f, %f, %f, %f]", quat_offset_r.x(), quat_offset_r.y(), quat_offset_r.z(), quat_offset_r.w());
         }
     }));
 

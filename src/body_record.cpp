@@ -16,7 +16,7 @@ void body_record::ros_init()
     
     // sub
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/left_cartesian_compliance_controller/imu", rclcpp::SystemDefaultsQoS(),
+        "/imu/data", rclcpp::SystemDefaultsQoS(),
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
             imu_msg_ = *msg;
         }
@@ -24,7 +24,7 @@ void body_record::ros_init()
 
     // srv
     start_record_srv_ = this->create_service<std_srvs::srv::SetBool>(
-        "/body_record/start_record", std::bind(&body_record::start_record_cb, this, std::placeholders::_1, std::placeholders::_2)   
+        "teleop_start", std::bind(&body_record::start_record_cb, this, std::placeholders::_1, std::placeholders::_2)   
     );
 
     // init variables
