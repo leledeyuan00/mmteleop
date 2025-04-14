@@ -28,10 +28,19 @@ public:
         state_ = initial_state;
     }
 
+    void set_measurement_noise(const Matrix3d& measurement_noise){
+        measurement_noise_ = measurement_noise;
+    }
+
+    void set_quat_offset_nominal(const Quaterniond& quat_offset_nominal){
+        quat_offset_nominal_ = quat_offset_nominal;
+    }
+
     Vector12d prio_estimation(Vector3d imu_acc, Matrix3d rot, double dt);
     Vector12d update(const Vector3d imu_acc,const Vector3d hand_position, Matrix3d rot, double dt); // with IMU
     Vector12d update(const Vector3d hand_position); // without IMU
     Vector12d get_state() const {return state_;}
+    Quaterniond get_quat_offset() const {return quat_offset_nominal_;}
 
     Matrix3d skew_symmetric(const Vector3d& vec){
         Matrix3d skew;

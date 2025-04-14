@@ -15,6 +15,7 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
 
 #include "kdl/frames.hpp"
 #include "tf2_eigen/tf2_eigen.hpp"
@@ -57,6 +58,9 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_r_;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr body_tracking_status_sub_;
 
+    // pub for monitor
+    rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr monitor_pub_;
+
     // srvs
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr teleop_srv_;
     bool teleop_start_;
@@ -83,8 +87,8 @@ private:
     // IMU
     std::vector<Eigen::Vector3d> imu_acc_l_buffer_;
     std::vector<Eigen::Vector3d> imu_acc_r_buffer_;
-    Eigen::Quaterniond imu_ori_l_;
-    Eigen::Quaterniond imu_ori_r_;
+    std::vector<Eigen::Quaterniond> imu_ori_l_buffer_;
+    std::vector<Eigen::Quaterniond> imu_ori_r_buffer_;
 
     // kalman filter
     std::shared_ptr<KalmanFilter> kalman_filter_ptr_l_;

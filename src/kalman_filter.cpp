@@ -57,10 +57,15 @@ Vector12d KalmanFilter::update(const Vector3d imu_acc,const Vector3d hand_positi
     MatrixKd kalman_gain = (covariance_ * observation_matrix_.transpose()) * S.inverse();
 
     // Post estimation
-    state_ = state_ + kalman_gain * (measurement_v - observation_matrix_ * state_);
+    Vector12d weighted_diag;
+    weighted_diag << 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1;
+    Matrix12d weighted_update = weighted_diag.asDiagonal();
+    state_ = state_ + weighted_update * kalman_gain * (measurement_v - observation_matrix_ * state_);
 
     // delta_quat_offset
     Vector3d dtheta = state_.block<3,1>(9,0);
+    dtheta(0) = 0;
+    // dtheta(1) = 0; // only rotation around z axis
     Quaterniond delta_quat_offset = small_angle_quaternion(dtheta);
     quat_offset_nominal_ = (delta_quat_offset.conjugate() * quat_offset_nominal_ ).normalized();
 
