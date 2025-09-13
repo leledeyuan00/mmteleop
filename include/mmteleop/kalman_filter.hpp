@@ -37,7 +37,7 @@ public:
     }
 
     Vector12d prio_estimation(Vector3d imu_acc, Matrix3d rot, double dt);
-    Vector12d update(const Vector3d imu_acc,const Vector3d hand_position, Matrix3d rot, double dt); // with IMU
+    Vector12d update(const Vector3d hand_position, Matrix3d rot, double dt); // with IMU
     Vector12d update(const Vector3d hand_position); // without IMU
     Vector12d get_state() const {return state_;}
     Quaterniond get_quat_offset() const {return quat_offset_nominal_;}

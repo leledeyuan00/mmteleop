@@ -36,10 +36,18 @@
 namespace garment_research
 {
 
+struct PointData
+{
+    double time;
+    Eigen::Vector3d position;
+    Eigen::Quaterniond orientation;
+    Eigen::Vector3d force;
+    Eigen::Vector3d torque;
+};
 class MmteleopIMU : public GarmentMotionBase
 {
 public:
-    MmteleopIMU();
+    MmteleopIMU(): GarmentMotionBase("multi_modal_teleop_imu"){};
 
 private:
     /* function */
@@ -47,6 +55,7 @@ private:
     void tf_update();
     void emergenccy_detection();
     void record_data_init();
+    void read_data_init();
     // tasks
     void test_service(bool on);
     virtual void tasks_init();
@@ -111,9 +120,30 @@ private:
     Vector12d state_l_;
     Vector12d state_r_;
 
+    double move_rate_;
+
+    uint8_t task_num_;
+
+    // recording data to vector buffer
+    std::vector<PointData> recorded_trj_l_;
+    std::vector<PointData> recorded_trj_r_;
+
+    // read data from vector buffer
+    uint32_t recorded_trj_idx_ = 0;
+    double linear_int_count_ = 0;
+
     // recording the data to txt file
     bool start_record_data_;
-    std::ofstream data_file_;    
+    std::ofstream data_file_;
+    std::string filename_;
+    std::ifstream data_file_in_;    
+
+    // algorithm
+    Eigen::Matrix<double, 3, 2> boundary_limit_l_;
+    Eigen::Matrix<double, 3, 2> boundary_limit_r_;
+    // Eigen::Vector3d boundary_left_corner_;
+    // Eigen::Vector3d boundary_right_corner_;
+    
 };
 
 } // namespace garment_research

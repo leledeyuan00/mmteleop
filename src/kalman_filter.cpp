@@ -46,7 +46,7 @@ Vector12d KalmanFilter::prio_estimation(Vector3d imu_acc, Matrix3d rot, double d
 
 
 // With IMU
-Vector12d KalmanFilter::update(const Vector3d imu_acc,const Vector3d hand_position, Matrix3d rot, double dt)
+Vector12d KalmanFilter::update(const Vector3d hand_position, Matrix3d rot, double dt)
 {
 
     // Insert IMU accleration instead of estimated acceleration
@@ -58,7 +58,7 @@ Vector12d KalmanFilter::update(const Vector3d imu_acc,const Vector3d hand_positi
 
     // Post estimation
     Vector12d weighted_diag;
-    weighted_diag << 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1;
+    weighted_diag << 1, 1, 1, 1, 1, 1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01;
     Matrix12d weighted_update = weighted_diag.asDiagonal();
     state_ = state_ + weighted_update * kalman_gain * (measurement_v - observation_matrix_ * state_);
 
