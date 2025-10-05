@@ -44,6 +44,9 @@ void MMTeleop::ros_init()
         "/body_tracking_status", rclcpp::SystemDefaultsQoS()
     );
 
+    confidence_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
+        "/body_tracking_confidence", rclcpp::SystemDefaultsQoS()
+    );
 
     switch_id_service_ = this->create_service<std_srvs::srv::SetBool>(
         "/switch_id", 
@@ -144,13 +147,15 @@ void MMTeleop::body_arrary_callback(const visualization_msgs::msg::MarkerArray::
     }
 
     std::vector<Eigen::Vector3d> marker_positions;
+    std::vector<uint8_t> marker_confidences; 
     for (size_t i = 0; i < MARKER_NUM; i++)
     {
         Eigen::Vector3d marker_position;
         marker_position << msg->markers[tracking_body_index + i].pose.position.x, msg->markers[tracking_body_index + i].pose.position.y, msg->markers[tracking_body_index + i].pose.position.z;
         marker_positions.push_back(marker_position);
+        // get the confidence from the text
+        marker_confidences.push_back(std::stoi(msg->markers[tracking_body_index + i].text));
     }
-
 
     std::vector<Eigen::Vector3d> body_positions = {
         marker_positions[14], // 0 right hand
@@ -161,6 +166,17 @@ void MMTeleop::body_arrary_callback(const visualization_msgs::msg::MarkerArray::
     };
 
     get_hand_position(body_positions, right_hand_position_, left_hand_position_); // Calculate hand position
+
+    // publish the confidence
+    std_msgs::msg::UInt8MultiArray confidence_msg;
+    confidence_msg.data = std::vector<uint8_t>({
+        marker_confidences[14], // 0 right hand
+        marker_confidences[7],  // 1 left hand
+        marker_confidences[3],  // 2 neck upper
+        marker_confidences[4],  // 3 neck left
+        marker_confidences[11],  // 4 neck right
+    });
+    confidence_pub_->publish(confidence_msg);
 }
 
 void MMTeleop::get_hand_position(std::vector<Eigen::Vector3d> body_positions, Eigen::Vector3d& right_hand_position, Eigen::Vector3d& left_hand_position)

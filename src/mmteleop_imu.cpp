@@ -10,9 +10,9 @@ namespace garment_research
 void MmteleopIMU::custom_init()
 {
 
-    boundary_limit_l_   << 0.3, 0.8,
-                           -0.3, 0.3,
-                           -0.8, -0.5;
+    boundary_limit_l_   << -0.27, 0.27,
+                           -0.35, 0.25,
+                           -1.17, -0.5;
 
     boundary_limit_r_   << 0.3, 0.8,
                            -0.3, 0.3,
@@ -60,6 +60,11 @@ void MmteleopIMU::custom_init()
     body_tracking_status_sub_ = this->create_subscription<std_msgs::msg::Empty>(
         "/body_tracking_status", 10, [this](const std_msgs::msg::Empty::SharedPtr msg) {
             new_tracking_data_ = true;
+        });
+
+    confidence_sub_ = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
+        "/body_tracking_confidence", 10, [this](const std_msgs::msg::UInt8MultiArray::SharedPtr msg) {
+            marker_confidences_ = msg->data;
         });
 
     // pub for monitor
@@ -184,7 +189,7 @@ void MmteleopIMU::tasks_init()
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.206238, 0.011980, 2.086497, -1.680621, 1.395523, 2.115011};
+        std::vector<double> left_home_joints = {-1.594824, 0.012773, 1.753175, 0.026224, -1.765313, 0.011716};
         std::vector<double> right_home_joints = {0.069006, -0.018931, 2.117219, 1.604778, 1.507740, -2.009313};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
@@ -192,44 +197,52 @@ void MmteleopIMU::tasks_init()
         }
     }));
 
-    // Initial tf, sin wave looping and waiting teleop service
-    task_pushback(TaskPtr("Initial tf ,move along y-axis with a sin wave 20mm, waiting teleop service",
-    // loop function
-    [this](){
-        tf_update();
-        double distance = 0.02;
-        double loop_duration = 8.0;
-        auto sin_start_pose_l = get_robot_state_l().start_pose;
-        auto sin_start_pose_r = get_robot_state_r().start_pose;
-        double current_duration = (get_system_state().current_time - get_system_state().start_time).seconds();
+    // move to start pose
+    task_pushback(TaskPtr("Move to start pose", [this](){
+        // Set target pose
+        auto left_pose = get_robot_state_l().current_pose;
+        auto right_pose = get_robot_state_r().current_pose;
 
-        auto left_pose = get_robot_state_l().start_pose;
-        auto right_pose = get_robot_state_r().start_pose;
+        // set_target_pose_l(left_pose);
+        // set_target_pose_r(right_pose);
 
-        left_pose.pose.position.y = sin_start_pose_l.pose.position.y - (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
-        right_pose.pose.position.y = sin_start_pose_r.pose.position.y + (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
+        left_pose.pose.position.x = 0.2;
+        left_pose.pose.position.y = -0.1;
+        left_pose.pose.position.z = -1.1;
+        left_pose.pose.orientation.x = 0.707106781;
+        left_pose.pose.orientation.y = -0.707106781;
+        left_pose.pose.orientation.z = 0.0;
+        left_pose.pose.orientation.w = 0.0;
+        
 
-        set_target_pose_l(left_pose);
-        set_target_pose_r(right_pose);
-
-        if (teleop_start_ && imu_received_l_ && imu_received_r_)
-        {
-            RCLCPP_INFO(this->get_logger(), "Teleop service is on");
-            set_task_finished();
-            teleop_start_ = false; // reset teleop start flag
-        }
-    }));
-
-    // Going to teleop start position
-    task_pushback(TaskPtr("Going to teleop start positions", [this](){
-
-        std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
-        std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
-
-        if(joint_move(left_home_joints, right_home_joints, 4.0)){
+        if(move(left_pose, right_pose, 3.0)){
             set_task_finished();
         }
     }));
+
+    // move to the start pose of teleop
+    task_pushback(TaskPtr("Move to the start pose of teleop", [this](){
+        // Set target pose
+        auto left_pose = get_robot_state_l().current_pose;
+        auto right_pose = get_robot_state_r().current_pose;
+
+        // set_target_pose_l(left_pose);
+        // set_target_pose_r(right_pose);
+
+        left_pose.pose.position.x = 0.2;
+        left_pose.pose.position.y = -0.1;
+        left_pose.pose.position.z = boundary_limit_l_(2,0);
+        left_pose.pose.orientation.x = 0.707106781;
+        left_pose.pose.orientation.y = -0.707106781;
+        left_pose.pose.orientation.z = 0.0;
+        left_pose.pose.orientation.w = 0.0;
+        
+
+        if(move(left_pose, right_pose, 3.0)){
+            set_task_finished();
+        }
+    }));
+
 
     // Waiting until the start button is pressed
     task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
@@ -309,7 +322,7 @@ void MmteleopIMU::tasks_init()
     }));
 
     // Start Teleop
-    task_pushback(TaskPtr("Start Teleop", [this](){
+    tele_start_task_num_ = task_pushback(TaskPtr("Start Teleop", [this](){
         tf_update();
         // Initialize the start position
         body_neck_start_ = body_neck_;
@@ -330,7 +343,7 @@ void MmteleopIMU::tasks_init()
         kalman_filter_ptr_r_->set_initial_state(initial_state_r);
         kalman_filter_ptr_r_->set_measurement_noise(Matrix3d::Identity() * pow(sigma_measurement,2)); // reduce the convidence of the camera tracking position
         // low pass filter
-        Eigen::Vector3d alpha(0.005, 0.005, 0.005);
+        Eigen::Vector3d alpha(0.1, 0.1, 0.1);
         low_pass_filter_ptr_l_.reset(new LowPassFilter(alpha));
         low_pass_filter_ptr_r_.reset(new LowPassFilter(alpha));
 
@@ -348,6 +361,22 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
         // Update tf
         tf_update();
+
+        // Update the camera confidence by using the marker confidence
+        double sigma_measurement_l; 
+        if (marker_confidences_[LEFT_HAND] == 2){
+            sigma_measurement_l = 0.02; // 2 cm
+            new_tracking_data_ = true; // only update the kalman filter when the marker confidence is high
+        } else if (marker_confidences_[LEFT_HAND] == 1){
+            sigma_measurement_l = 2; // 2 m
+            new_tracking_data_ = false;
+            RCLCPP_WARN(this->get_logger(), "Left hand marker confidence is low!");
+        } else if (marker_confidences_[LEFT_HAND] == 0){
+            sigma_measurement_l = 20.0; // 20 m -- basically ignore the camera input
+            new_tracking_data_ = false;
+            RCLCPP_WARN(this->get_logger(), "Left hand marker is lost!");
+        }
+        kalman_filter_ptr_l_->set_measurement_noise(Matrix3d::Identity() * pow(sigma_measurement_l,2)); // dynamic change the measurement noise according to the marker confidence
 
         // Move Rate
         double elapsed_time = get_system_state().current_time.seconds() + 
@@ -406,16 +435,17 @@ void MmteleopIMU::tasks_init()
         target_pose_l.header.stamp = this->now();
         target_pose_l.pose.position.x = start_pose_l.pose.position.x  + position_inc_l(0) * move_rate_;
         target_pose_l.pose.position.y = start_pose_l.pose.position.y  + position_inc_l(1) * move_rate_;
-        target_pose_l.pose.position.z = start_pose_l.pose.position.z  + position_inc_l(2) * move_rate_;
+        target_pose_l.pose.position.z = boundary_limit_l_(2,0); 
 
         // target_pose_l.pose.position.x = std::clamp(target_pose_l.pose.position.x, boundary_left_corner_(0), boundary_right_corner_(0));
         // target_pose_l.pose.position.y = std::clamp(target_pose_l.pose.position.y, boundary_left_corner_(1), boundary_right_corner_(1));
         // target_pose_l.pose.position.z = std::clamp(target_pose_l.pose.position.z, boundary_left_corner_(2), boundary_right_corner_(2));
 
-        target_pose_l.pose.orientation.x = robot_ori_target_l.x();
-        target_pose_l.pose.orientation.y = robot_ori_target_l.y();
-        target_pose_l.pose.orientation.z = robot_ori_target_l.z();
-        target_pose_l.pose.orientation.w = robot_ori_target_l.w();
+        // Fixed orientation for left hand
+        target_pose_l.pose.orientation.x = 0.707106781;
+        target_pose_l.pose.orientation.y = -0.707106781;
+        target_pose_l.pose.orientation.z = 0.0;
+        target_pose_l.pose.orientation.w = 0.0;
         
 
 
@@ -533,115 +563,6 @@ void MmteleopIMU::tasks_init()
     task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){
         if(sleep(1.0))
         {
-            set_task_finished();
-        }
-    }));
-    
-    // Going to teleop start position
-    task_pushback(TaskPtr("Going to teleop start positions", [this](){
-
-        std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
-        std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
-
-        if(joint_move(left_home_joints, right_home_joints, 4.0)){
-            set_task_finished();
-        }
-    }));
-
-    // Sleep for 1 second
-    task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){
-        if(sleep(1.0))
-        {
-            set_task_finished();
-        }
-    }));
-
-    // Back to Start
-    task_pushback(TaskPtr("Back to Start", [this](){
-        recorded_trj_idx_ = 0;
-        linear_int_count_ = 0;
-    },
-    [this](){
-        geometry_msgs::msg::PoseStamped start_pose_l;
-        geometry_msgs::msg::PoseStamped start_pose_r;
-
-        start_pose_l.pose.position.x = recorded_trj_l_[0].position[0];
-        start_pose_l.pose.position.y = recorded_trj_l_[0].position[1];
-        start_pose_l.pose.position.z = recorded_trj_l_[0].position[2];
-
-        start_pose_l.pose.orientation = tf2::toMsg(recorded_trj_l_[0].orientation);
-
-
-        start_pose_r.pose.position.x = recorded_trj_r_[0].position[0];
-        start_pose_r.pose.position.y = recorded_trj_r_[0].position[1];
-        start_pose_r.pose.position.z = recorded_trj_r_[0].position[2];
-
-        start_pose_r.pose.orientation = tf2::toMsg(recorded_trj_r_[0].orientation);
-
-        // RCLCPP_INFO(this->get_logger(), "Teleop service is on, left hand orientation: [%f, %f, %f, %f], right hand orientation: [%f, %f, %f, %f]",
-        //     get_robot_state_l().current_pose.pose.orientation.x,
-        //     get_robot_state_l().current_pose.pose.orientation.y,
-        //     get_robot_state_l().current_pose.pose.orientation.z,
-        //     get_robot_state_l().current_pose.pose.orientation.w,
-        //     get_robot_state_r().current_pose.pose.orientation.x,
-        //     get_robot_state_r().current_pose.pose.orientation.y,
-        //     get_robot_state_r().current_pose.pose.orientation.z.
-        //     get_robot_state_r().current_pose.pose.orientation.w);
-
-        if (move(start_pose_l, start_pose_r, 5.0))
-        {
-            set_task_finished();
-        }
-    }));
-
-    // Sleep for 1 second
-    task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){
-        if(sleep(1.0))
-        {
-            set_task_finished();
-        }
-    }));
-
-    // Playback
-    task_pushback(TaskPtr("Playback", [this](){
-            teleop_start_ = true;
-        },
-        [this](){
-        if (recorded_trj_idx_ < (recorded_trj_l_.size()/10 - 1) && teleop_start_)
-        {
-            geometry_msgs::msg::PoseStamped target_pose_l, target_pose_r;
-            target_pose_l = get_robot_state_l().start_pose;
-            target_pose_r = get_robot_state_r().start_pose;
-
-            target_pose_l.pose.position.x = recorded_trj_l_[recorded_trj_idx_ * 10].position[0] + (recorded_trj_l_[(recorded_trj_idx_+1) * 10].position[0] - recorded_trj_l_[recorded_trj_idx_ * 10].position[0]) * (linear_int_count_ / 10.0);
-            target_pose_l.pose.position.y = recorded_trj_l_[recorded_trj_idx_ * 10].position[1] + (recorded_trj_l_[(recorded_trj_idx_+1) * 10].position[1] - recorded_trj_l_[recorded_trj_idx_ * 10].position[1]) * (linear_int_count_ / 10.0);
-            target_pose_l.pose.position.z = recorded_trj_l_[recorded_trj_idx_ * 10].position[2] + (recorded_trj_l_[(recorded_trj_idx_+1) * 10].position[2] - recorded_trj_l_[recorded_trj_idx_ * 10].position[2]) * (linear_int_count_ / 10.0);
-            
-
-            Eigen::Quaterniond q_l = recorded_trj_l_[recorded_trj_idx_ * 10].orientation.slerp(linear_int_count_ / 10.0, recorded_trj_l_[(recorded_trj_idx_+1) * 10].orientation);
-            target_pose_l.pose.orientation = tf2::toMsg(q_l);
-
-            target_pose_r.pose.position.x = recorded_trj_r_[recorded_trj_idx_ * 10].position[0] + (recorded_trj_r_[(recorded_trj_idx_+1) * 10].position[0] - recorded_trj_r_[recorded_trj_idx_ * 10].position[0]) * (linear_int_count_ / 10.0);
-            target_pose_r.pose.position.y = recorded_trj_r_[recorded_trj_idx_ * 10].position[1] + (recorded_trj_r_[(recorded_trj_idx_+1) * 10].position[1] - recorded_trj_r_[recorded_trj_idx_ * 10].position[1]) * (linear_int_count_ / 10.0);
-            target_pose_r.pose.position.z = recorded_trj_r_[recorded_trj_idx_ * 10].position[2] + (recorded_trj_r_[(recorded_trj_idx_+1) * 10].position[2] - recorded_trj_r_[recorded_trj_idx_ * 10].position[2]) * (linear_int_count_ / 10.0);
-
-            Eigen::Quaterniond q_r = recorded_trj_r_[recorded_trj_idx_ * 10].orientation.slerp(linear_int_count_ / 10.0, recorded_trj_r_[(recorded_trj_idx_+1) * 10].orientation);
-            target_pose_r.pose.orientation = tf2::toMsg(q_r);
-
-            linear_int_count_+= 1;
-            if (linear_int_count_ >= 10)
-            {
-                linear_int_count_ = 0;
-                recorded_trj_idx_++;
-            }
-
-            set_target_pose_l(target_pose_l);
-            set_target_pose_r(target_pose_r);
-        }
-        else
-        {
-            // set_task_finished();
-            teleop_start_ = false;
             set_task_finished();
         }
     }));

@@ -10,6 +10,7 @@
 
 // ros
 #include <std_msgs/msg/int8.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include "geometry_msgs/msg/wrench_stamped.hpp"
@@ -32,6 +33,15 @@
 
 // low pass filter
 #include "mmteleop/low_pass_filter.hpp"
+
+enum MARKER_ID: uint8_t
+{
+    RIGHT_HAND = 0,
+    LEFT_HAND = 1,
+    NECK_UPPER = 2,
+    NECK_LEFT = 3,
+    NECK_RIGHT = 4
+};
 
 namespace garment_research
 {
@@ -66,6 +76,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_l_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_r_;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr body_tracking_status_sub_;
+    rclcpp::Subscription<std_msgs::msg::UInt8MultiArray>::SharedPtr confidence_sub_;
 
     // pub for monitor
     rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr monitor_pub_;
@@ -123,6 +134,9 @@ private:
     double move_rate_;
 
     uint8_t task_num_;
+    uint8_t tele_start_task_num_;
+
+    std::vector<uint8_t> marker_confidences_;
 
     // recording data to vector buffer
     std::vector<PointData> recorded_trj_l_;
