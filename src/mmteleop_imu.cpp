@@ -11,12 +11,12 @@ void MmteleopIMU::custom_init()
 {
 
     boundary_limit_l_   << 0.3, 0.8,
-                           -0.3, 0.3,
-                           -0.8, -0.5;
+                           -0.6, 0.3,
+                           -0.8, -0.4;
 
     boundary_limit_r_   << 0.3, 0.8,
-                           -0.3, 0.3,
-                           -0.8, -0.5;
+                           -0.3, 0.6,
+                           -0.8, -0.4;
 
     // imu sub
     imu_acc_l_buffer_.resize(30); // for 240 ms
@@ -170,7 +170,7 @@ void MmteleopIMU::emergenccy_detection()
     Eigen::Vector3d left_wrench_force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
     Eigen::Vector3d right_wrench_force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
 
-    double thereshold = 15; // N
+    double thereshold = 30; // N
     if (left_wrench_force.norm() > thereshold || right_wrench_force.norm() > thereshold)
     {
         RCLCPP_ERROR(this->get_logger(), "Emergency detected, current force is: [%f, %f]", left_wrench_force.norm(), right_wrench_force.norm());
@@ -184,60 +184,65 @@ void MmteleopIMU::tasks_init()
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.206238, 0.011980, 2.086497, -1.680621, 1.395523, 2.115011};
-        std::vector<double> right_home_joints = {0.069006, -0.018931, 2.117219, 1.604778, 1.507740, -2.009313};
+        std::vector<double> left_home_joints = {-0.229152, 0.016988, 2.081044, -1.691162, 1.373388, 3.685172};
+        std::vector<double> right_home_joints = {0.080395, -0.015635, 2.113280, 1.609670, 1.496379, -0.433013};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
         }
     }));
 
-    // Initial tf, sin wave looping and waiting teleop service
-    task_pushback(TaskPtr("Initial tf ,move along y-axis with a sin wave 20mm, waiting teleop service",
-    // loop function
-    [this](){
-        tf_update();
-        double distance = 0.02;
-        double loop_duration = 8.0;
-        auto sin_start_pose_l = get_robot_state_l().start_pose;
-        auto sin_start_pose_r = get_robot_state_r().start_pose;
-        double current_duration = (get_system_state().current_time - get_system_state().start_time).seconds();
+    // // Initial tf, sin wave looping and waiting teleop service
+    // task_pushback(TaskPtr("Initial tf ,move along y-axis with a sin wave 20mm, waiting teleop service",
+    // // loop function
+    // [this](){
+    //     tf_update();
+    //     double distance = 0.02;
+    //     double loop_duration = 8.0;
+    //     auto sin_start_pose_l = get_robot_state_l().start_pose;
+    //     auto sin_start_pose_r = get_robot_state_r().start_pose;
+    //     double current_duration = (get_system_state().current_time - get_system_state().start_time).seconds();
 
-        auto left_pose = get_robot_state_l().start_pose;
-        auto right_pose = get_robot_state_r().start_pose;
+    //     auto left_pose = get_robot_state_l().start_pose;
+    //     auto right_pose = get_robot_state_r().start_pose;
 
-        left_pose.pose.position.y = sin_start_pose_l.pose.position.y - (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
-        right_pose.pose.position.y = sin_start_pose_r.pose.position.y + (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
+    //     left_pose.pose.position.y = sin_start_pose_l.pose.position.y - (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
+    //     right_pose.pose.position.y = sin_start_pose_r.pose.position.y + (distance * sin(current_duration  / loop_duration * (2 * M_PI) + 3*M_PI/2) + distance);
 
-        set_target_pose_l(left_pose);
-        set_target_pose_r(right_pose);
+    //     set_target_pose_l(left_pose);
+    //     set_target_pose_r(right_pose);
 
-        if (teleop_start_ && imu_received_l_ && imu_received_r_)
-        {
-            RCLCPP_INFO(this->get_logger(), "Teleop service is on");
-            set_task_finished();
-            teleop_start_ = false; // reset teleop start flag
-        }
-    }));
+    //     if (teleop_start_ && imu_received_l_ && imu_received_r_)
+    //     {
+    //         RCLCPP_INFO(this->get_logger(), "Teleop service is on");
+    //         set_task_finished();
+    //         teleop_start_ = false; // reset teleop start flag
+    //     }
+    // }));
 
-    // Going to teleop start position
-    task_pushback(TaskPtr("Going to teleop start positions", [this](){
+    // // Going to teleop start position
+    // task_pushback(TaskPtr("Going to teleop start positions", [this](){
 
-        std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
-        std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
+    //     std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
+    //     std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
 
-        if(joint_move(left_home_joints, right_home_joints, 4.0)){
-            set_task_finished();
-        }
-    }));
+    //     if(joint_move(left_home_joints, right_home_joints, 4.0)){
+    //         set_task_finished();
+    //     }
+    // }));
 
     // Waiting until the start button is pressed
     task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
         if (teleop_start_)
         {
             RCLCPP_INFO(this->get_logger(), "Teleop start button is pressed");
-            set_task_finished();
-            teleop_start_ = false; // reset teleop start flag
+            if (!calibrated_)
+            {
+                set_task_finished();
+                teleop_start_ = false; // reset teleop start flag
+            }else{
+                goto_specific_task(teleop_task_num_);
+            }
         }
     }));
 
@@ -305,11 +310,12 @@ void MmteleopIMU::tasks_init()
             RCLCPP_INFO(this->get_logger(), "Left bias is: [%f, %f, %f]", current_bias_l(0), current_bias_l(1), current_bias_l(2));
             RCLCPP_INFO(this->get_logger(), "Right bias is: [%f, %f, %f]", current_bias_r(0), current_bias_r(1), current_bias_r(2));
             set_task_finished();
+            calibrated_ = true;
         }
     }));
 
     // Start Teleop
-    task_pushback(TaskPtr("Start Teleop", [this](){
+    teleop_task_num_ = task_pushback(TaskPtr("Start Teleop", [this](){
         tf_update();
         // Initialize the start position
         body_neck_start_ = body_neck_;
@@ -536,17 +542,25 @@ void MmteleopIMU::tasks_init()
             set_task_finished();
         }
     }));
-    
-    // Going to teleop start position
-    task_pushback(TaskPtr("Going to teleop start positions", [this](){
 
-        std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
-        std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
-
-        if(joint_move(left_home_joints, right_home_joints, 4.0)){
-            set_task_finished();
+    // Sleep for 1 second
+    task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){
+        if(sleep(1.0))
+        {
+            goto_init_task();
         }
     }));
+    
+    // Going to teleop start position
+    // task_pushback(TaskPtr("Going to teleop start positions", [this](){
+
+    //     std::vector<double> left_home_joints = {-0.554431, -0.019080, 2.253256, -3.011834, 1.082631, 3.040541};
+    //     std::vector<double> right_home_joints = {0.486575, -0.113307, 2.366543, 3.091654, 1.115678, -2.921454};
+
+    //     if(joint_move(left_home_joints, right_home_joints, 4.0)){
+    //         set_task_finished();
+    //     }
+    // }));
 
     // Sleep for 1 second
     task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){

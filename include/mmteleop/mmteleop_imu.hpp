@@ -141,6 +141,9 @@ private:
     // algorithm
     Eigen::Matrix<double, 3, 2> boundary_limit_l_;
     Eigen::Matrix<double, 3, 2> boundary_limit_r_;
+
+    bool calibrated_{false};
+    uint8_t teleop_task_num_;
     // Eigen::Vector3d boundary_left_corner_;
     // Eigen::Vector3d boundary_right_corner_;
     
