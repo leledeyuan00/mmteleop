@@ -10,14 +10,13 @@ namespace garment_research
 void MmteleopIMU::custom_init()
 {
 
-    boundary_limit_l_   << -2.3, 2.8,
-                           -2.3, 2.3,
-                           -2.8, 2.5;
+    boundary_limit_l_   << 0.3, 0.8,
+                           -0.6, 0.3,
+                           -1.2, -0.4;
 
-    boundary_limit_r_   << -2.3, 2.8,
-                           -2.3, 2.3,
-                           -2.8, 2.5;
-
+    boundary_limit_r_   << 0.3, 0.8,
+                           -0.3, 0.6,
+                           -1.2, -0.4;
     // imu sub
     imu_acc_l_buffer_.resize(30); // for 240 ms
     imu_ori_l_buffer_.resize(30);
@@ -65,6 +64,15 @@ void MmteleopIMU::custom_init()
     // pub for monitor
     monitor_pub_ = this->create_publisher<geometry_msgs::msg::PointStamped>(
         "/tele/monitor", rclcpp::SystemDefaultsQoS()
+    );
+
+    // pub for haptics
+    haptics_pub_l_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+        "/L_haptic_amplitude", rclcpp::SystemDefaultsQoS()
+    );
+
+    haptics_pub_r_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+        "/R_haptic_amplitude", rclcpp::SystemDefaultsQoS()
     );
 
     // service
@@ -181,8 +189,7 @@ void MmteleopIMU::emergenccy_detection()
     Eigen::Vector3d left_wrench_force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
     Eigen::Vector3d right_wrench_force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
 
-    double thereshold = 15; // N
-    if (left_wrench_force.norm() > thereshold || right_wrench_force.norm() > thereshold)
+    if (left_wrench_force.norm() > force_threshold_ || right_wrench_force.norm() > force_threshold_)
     {
         RCLCPP_ERROR(this->get_logger(), "Emergency detected, current force is: [%f, %f]", left_wrench_force.norm(), right_wrench_force.norm());
         emergency_stop_ = true;
@@ -195,8 +202,8 @@ void MmteleopIMU::tasks_init()
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.206238, 0.011980, 2.086497, -1.680621, 1.395523, 2.115011};
-        std::vector<double> right_home_joints = {0.069006, -0.018931, 2.117219, 1.604778, 1.507740, -2.009313};
+        std::vector<double> left_home_joints = {-0.259797, -0.180369, 2.012831, -1.642967, 1.319282, 3.416804};
+        std::vector<double> right_home_joints = {0.059437, -0.132879, 1.972856, 1.583187, 1.507452, 2.896193};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
@@ -516,7 +523,7 @@ void MmteleopIMU::tasks_init()
         hand_ori_start_r_ = Eigen::Quaterniond(body_right_hand_quest_.rotation());
 
         // low pass filter
-        Eigen::Vector3d alpha(1, 1, 1);
+        Eigen::Vector3d alpha(0.5, 0.5, 0.5);
         low_pass_filter_ptr_l_.reset(new LowPassFilter(alpha));
         low_pass_filter_ptr_r_.reset(new LowPassFilter(alpha));
 
@@ -528,7 +535,7 @@ void MmteleopIMU::tasks_init()
     [this](){
         auto robot_l = get_robot_state_l();
         auto robot_r = get_robot_state_r();
-        double alpha_ori = 1;
+        double alpha_ori = 0.5;
         geometry_msgs::msg::PoseStamped current_pose_l = robot_l.current_pose;
         geometry_msgs::msg::PoseStamped current_pose_r = robot_r.current_pose;
         Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
@@ -641,7 +648,21 @@ void MmteleopIMU::tasks_init()
         target_pose_r.pose.orientation.y = robot_ori_target_r.y();
         target_pose_r.pose.orientation.z = robot_ori_target_r.z();
         target_pose_r.pose.orientation.w = robot_ori_target_r.w();
-        
+
+        // publish haptics feedback
+        double force_l = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z).norm();
+        double haptics_l = force_l > 2.0 ? force_l/(force_threshold_ - 2.0) : 0.0;
+        if (haptics_l > 1.0) haptics_l = 1.0;
+        std_msgs::msg::Float64MultiArray haptics_msg_l;
+        haptics_msg_l.data.push_back(haptics_l);
+        haptics_pub_l_->publish(haptics_msg_l);
+
+        double force_r = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z).norm();
+        double haptics_r = force_r > 2.0 ? force_r/(force_threshold_ - 2.0) : 0.0;
+        if (haptics_r > 1.0) haptics_r = 1.0;
+        std_msgs::msg::Float64MultiArray haptics_msg_r;
+        haptics_msg_r.data.push_back(haptics_r);
+        haptics_pub_r_->publish(haptics_msg_r);        
         
         
         // Set target pose
@@ -682,6 +703,7 @@ void MmteleopIMU::tasks_init()
             data_file_.close();
             // goto_init_task();
             set_task_finished();
+            emergency_stop_ = false;
         }
     }));
 
