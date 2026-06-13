@@ -115,24 +115,35 @@ void MmteleopIMU::custom_init()
 
     kalman_filter_ptr_l_.reset(new KalmanFilter(initial_covariance, jacobian_matrix, observation_matrix, process_noise, measurement_noise));
     kalman_filter_ptr_r_.reset(new KalmanFilter(initial_covariance, jacobian_matrix, observation_matrix, process_noise, measurement_noise));
+
+    // Initialize haptic trigger sequence
+    {
+        // 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1;
+        haptic_trigger_sequence_ = {
+            HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, 
+            HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::STOP, HAPTIC_TRIGGER::START
+        };
+    }
+    start_record_data_ = true;
+    haptic_trigger_idx_ = 1;
     
 }
 
-void MmteleopIMU::record_data_init()
+bool MmteleopIMU::record_data_init()
 {
     // record data
     std::time_t now = std::time(NULL);
     std::tm *lt = std::localtime(&now);
     char* home_dir = getenv("HOME");
     filename_ = std::string(home_dir) + "/Documents/log/mmteleop/" +
-            std::to_string(lt->tm_mon + 1) + "-" +
-            std::to_string(lt->tm_mday) + "-" +
-            std::to_string(lt->tm_hour) + "-" +
-            std::to_string(lt->tm_min) + "-" +
-            std::to_string(lt->tm_sec) + ".txt";
+            std::to_string(haptic_trigger_idx_ + 1) + ".txt";
     data_file_.open(filename_);
-    if(!data_file_) std::cout<<"error"<<std::endl;
-    data_file_ << "time px_l py_l pz_l fx_l fy_l fz_l px_r py_r pz_r fx_r fy_r fz_r" << std::endl;
+    if(!data_file_){
+        std::cout<<"error"<<std::endl;
+        return false;
+    }        
+    data_file_ << "index time px_r py_r pz_r fx_r fy_r fz_r haptic_used" << std::endl;
+    return true;
 }
 
 void MmteleopIMU::read_data_init()
@@ -186,7 +197,8 @@ void MmteleopIMU::emergenccy_detection()
 {
     auto robot_l = get_robot_state_l();
     auto robot_r = get_robot_state_r();
-    Eigen::Vector3d left_wrench_force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
+    // Eigen::Vector3d left_wrench_force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
+    Eigen::Vector3d left_wrench_force = Eigen::Vector3d::Zero(); // ignore the force during teleop;
     Eigen::Vector3d right_wrench_force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
 
     if (left_wrench_force.norm() > force_threshold_ || right_wrench_force.norm() > force_threshold_)
@@ -202,13 +214,33 @@ void MmteleopIMU::tasks_init()
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.259797, -0.180369, 2.012831, -1.642967, 1.319282, 3.416804};
-        std::vector<double> right_home_joints = {0.059437, -0.132879, 1.972856, 1.583187, 1.507452, 2.896193};
+        std::vector<double> left_home_joints = {0.028096, 0.259505, 2.265874, -1.766502, 1.447507, 4.030074};
+        std::vector<double> right_home_joints = {0.312594, -0.067569, 1.726894, 1.145325, 0.990894, 3.566262};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
         }
     }));
+
+    // reset the force sensor bias by running a bash script
+    task_pushback(TaskPtr("Reset the force sensor bias by running a bash script", [this](){
+        std::string home_dir = getenv("HOME");
+        std::string command = "bash " + home_dir + "/garment_ws/src/garment_robot/reset_ft_sensor_data.bash right";
+        int result = system(command.c_str());
+        if (result == 0)
+        {
+            RCLCPP_INFO(this->get_logger(), "Force sensor bias reset successfully");
+            RCLCPP_INFO(this->get_logger(), "current_task is: %d / %d" , haptic_trigger_idx_+1, haptic_trigger_sequence_.size());
+
+            set_task_finished();
+        }
+        else
+        {
+            RCLCPP_ERROR(this->get_logger(), "Failed to reset force sensor bias");
+            goto_specific_task(end_task_num_);
+        }
+    }));
+
 
     // Waiting until the start button is pressed
     task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
@@ -219,8 +251,28 @@ void MmteleopIMU::tasks_init()
             set_task_finished();
             teleop_start_ = false; // reset teleop start flag
             #else
-            goto_specific_task(tele_quest_start_task_num_);
+            set_task_finished();
             #endif
+        }
+    }));
+
+    // Initial data recording
+    task_pushback(TaskPtr("Initial data recording", [this](){
+        if (!start_record_data_){
+            set_task_finished();
+            return;
+        }
+
+        if (record_data_init())
+        {
+            RCLCPP_INFO(this->get_logger(), "Data recording initialized");
+            
+            goto_specific_task(tele_quest_start_task_num_);
+        }
+        else
+        {
+            RCLCPP_ERROR(this->get_logger(), "Data recording initialization failed");
+            goto_specific_task(end_task_num_);
         }
     }));
 
@@ -528,8 +580,11 @@ void MmteleopIMU::tasks_init()
         low_pass_filter_ptr_r_.reset(new LowPassFilter(alpha));
 
         // refresh recorded buffers
-        recorded_trj_l_.clear();
-        recorded_trj_r_.clear();
+        RCLCPP_INFO(this->get_logger(), "Starting the %d / %d task.", haptic_trigger_idx_ + 1, haptic_trigger_sequence_.size());
+
+        // Show the target
+        RCLCPP_WARN(this->get_logger(), "Trying to stretch the fabric to the target force of around 4N, then finish the task.");
+        force_achieved_ = false;
         
     },
     [this](){
@@ -538,9 +593,16 @@ void MmteleopIMU::tasks_init()
         double alpha_ori = 0.5;
         geometry_msgs::msg::PoseStamped current_pose_l = robot_l.current_pose;
         geometry_msgs::msg::PoseStamped current_pose_r = robot_r.current_pose;
-        Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
         // Update tf
         tf_update();
+
+        // check if the target force is achieved for the current task
+        Eigen::Vector3d right_wrench_force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
+        if (!force_achieved_ && right_wrench_force.norm() > 4.0) // you can adjust the target force threshold here
+        {
+            RCLCPP_INFO(this->get_logger(), "Target force achieved, now start the arc trajectory.");
+            force_achieved_ = true;
+        }
 
         // Move Rate
         double elapsed_time = get_system_state().current_time.seconds() + 
@@ -644,25 +706,37 @@ void MmteleopIMU::tasks_init()
         // target_pose_r.pose.position.y = std::clamp(target_pose_r.pose.position.y, boundary_right_corner_(1), boundary_right_corner_(1));
         // target_pose_r.pose.position.z = std::clamp(target_pose_r.pose.position.z, boundary_right_corner_(2), boundary_right_corner_(2));
 
-        target_pose_r.pose.orientation.x = robot_ori_target_r.x();
-        target_pose_r.pose.orientation.y = robot_ori_target_r.y();
-        target_pose_r.pose.orientation.z = robot_ori_target_r.z();
-        target_pose_r.pose.orientation.w = robot_ori_target_r.w();
+        // target_pose_r.pose.orientation.x = robot_ori_target_r.x();
+        // target_pose_r.pose.orientation.y = robot_ori_target_r.y();
+        // target_pose_r.pose.orientation.z = robot_ori_target_r.z();
+        // target_pose_r.pose.orientation.w = robot_ori_target_r.w();
+
+
 
         // publish haptics feedback
-        double force_l = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z).norm();
-        double haptics_l = force_l > 2.0 ? force_l/(force_threshold_ - 2.0) : 0.0;
-        if (haptics_l > 1.0) haptics_l = 1.0;
-        std_msgs::msg::Float64MultiArray haptics_msg_l;
-        haptics_msg_l.data.push_back(haptics_l);
-        haptics_pub_l_->publish(haptics_msg_l);
+        double haptics_r = 0.0;
+        if (haptic_trigger_sequence_[haptic_trigger_idx_] == HAPTIC_TRIGGER::START)
+        {
+            // double force_l = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z).norm();
+            // double haptics_l = force_l > 2.0 ? force_l/(force_threshold_ - 2.0) : 0.0;
+            // if (haptics_l > 1.0) haptics_l = 1.0;
+            // std_msgs::msg::Float64MultiArray haptics_msg_l;
+            // haptics_msg_l.data.push_back(haptics_l);
+            // haptics_pub_l_->publish(haptics_msg_l);
 
-        double force_r = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z).norm();
-        double haptics_r = force_r > 2.0 ? force_r/(force_threshold_ - 2.0) : 0.0;
-        if (haptics_r > 1.0) haptics_r = 1.0;
-        std_msgs::msg::Float64MultiArray haptics_msg_r;
-        haptics_msg_r.data.push_back(haptics_r);
-        haptics_pub_r_->publish(haptics_msg_r);        
+            double force_r = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z).norm();
+            // haptics_r = force_r > 2.0 ? force_r/(force_threshold_ - 2.0) : 0.0;
+            haptics_r = 0.5;
+            haptics_r = force_r > 3.2 ? 0.6 : haptics_r; // if the force is greater than 3N, give a medium haptic feedback, you can adjust this threshold based on your experiment
+            haptics_r = force_r > 3.8 ? 0. : haptics_r; // if the force is greater than 3.8N, give a stronger haptic feedback, you can adjust this threshold based on your experiment
+            haptics_r = force_r > 4.2 ? 0.9 : haptics_r; // if the force is greater than 4N, give a stronger haptic feedback, you can adjust this threshold based on your experiment
+            haptics_r = force_r > 4.4 ? 1.0 : haptics_r; // if the force is greater than 4.2N, give the maximum haptic feedback, you can adjust this threshold based on your experiment
+            if (haptics_r > 1.0) haptics_r = 1.0;
+            std_msgs::msg::Float64MultiArray haptics_msg_r;
+            haptics_msg_r.data.push_back(haptics_r);
+            haptics_pub_r_->publish(haptics_msg_r);   
+        }     
+
         
         
         // Set target pose
@@ -674,33 +748,29 @@ void MmteleopIMU::tasks_init()
         }        
         
         // record data
+        if (start_record_data_ && force_achieved_)
         {
-            auto system_state = get_system_state();
-
-            PointData left_data;
-            PointData right_data;
-
-            std::string time;
-            time = std::to_string((system_state.current_time - system_state.start_time).seconds());
-            left_data.time = std::stod(time);
-            right_data.time = std::stod(time);
-            
-            left_data.position = Eigen::Vector3d(current_pose_l.pose.position.x, current_pose_l.pose.position.y, current_pose_l.pose.position.z);
-            right_data.position = Eigen::Vector3d(current_pose_r.pose.position.x, current_pose_r.pose.position.y, current_pose_r.pose.position.z);
-            left_data.orientation = Eigen::Quaterniond(current_pose_l.pose.orientation.w, current_pose_l.pose.orientation.x, current_pose_l.pose.orientation.y, current_pose_l.pose.orientation.z);
-            right_data.orientation = Eigen::Quaterniond(current_pose_r.pose.orientation.w, current_pose_r.pose.orientation.x, current_pose_r.pose.orientation.y, current_pose_r.pose.orientation.z);
-            left_data.force = Eigen::Vector3d(robot_l.current_wrench.wrench.force.x, robot_l.current_wrench.wrench.force.y, robot_l.current_wrench.wrench.force.z);
-            right_data.force = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z);
-            left_data.torque = Eigen::Vector3d(robot_l.current_wrench.wrench.torque.x, robot_l.current_wrench.wrench.torque.y, robot_l.current_wrench.wrench.torque.z);
-            right_data.torque = Eigen::Vector3d(robot_r.current_wrench.wrench.torque.x, robot_r.current_wrench.wrench.torque.y, robot_r.current_wrench.wrench.torque.z);
-
-            recorded_trj_l_.push_back(left_data);
-            recorded_trj_r_.push_back(right_data);
+            // "index time px_r py_r pz_r fx_r fy_r fz_r haptic_amp haptic_used"
+            data_file_  <<  static_cast<int>(haptic_trigger_idx_) << " " 
+                        << (get_system_state().current_time - get_system_state().start_time).seconds() << " "
+                        << target_pose_r.pose.position.x << " "
+                        << target_pose_r.pose.position.y << " "
+                        << target_pose_r.pose.position.z << " "
+                        << robot_r.current_wrench.wrench.force.x << " "
+                        << robot_r.current_wrench.wrench.force.y << " "
+                        << robot_r.current_wrench.wrench.force.z << " "
+                        << haptics_r << " "
+                        << (haptic_trigger_sequence_[haptic_trigger_idx_] == HAPTIC_TRIGGER::START ? 1 : 0) 
+                        << std::endl;
         }
 
         if (!teleop_start_)
         {
             data_file_.close();
+            haptic_trigger_idx_++;
+            std_msgs::msg::Float64MultiArray haptics_msg_r;
+            haptics_msg_r.data.push_back(0.0);
+            haptics_pub_r_->publish(haptics_msg_r);   
             // goto_init_task();
             set_task_finished();
             emergency_stop_ = false;
@@ -711,9 +781,22 @@ void MmteleopIMU::tasks_init()
     task_pushback(TaskPtr("Sleep for 1.0 seconds", [this](){
         if(sleep(1.0))
         {
-            goto_init_task();
+            // shutdown the teleop service after 1 second to make sure the robot is stopped
+
+            // goto_init_task();
+            // goto_specific_task(end_task_num_);
+            if (haptic_trigger_idx_ > haptic_trigger_sequence_.size() - 1)
+            {
+                goto_specific_task(end_task_num_);
+            }
+            else
+            {
+                goto_init_task();
+            }
         }
     }));
+
+    /* Playing back.... A simple demo below */
         
 
     // Sleep for 1 second
@@ -860,7 +943,7 @@ void MmteleopIMU::tasks_init()
     }));
 
     // // Shut down
-    task_pushback(TaskPtr("Shut down", [this](){
+    end_task_num_ = task_pushback(TaskPtr("Shut down", [this](){
         //initialize the task
         rclcpp::shutdown();
     }));

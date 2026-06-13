@@ -45,6 +45,13 @@ enum MARKER_ID: uint8_t
     NECK_RIGHT = 4
 };
 
+
+enum HAPTIC_TRIGGER: uint8_t
+{
+    STOP = 0,
+    START = 1
+};
+
 namespace garment_research
 {
 
@@ -66,7 +73,7 @@ private:
     virtual void custom_init();
     void tf_update();
     void emergenccy_detection();
-    void record_data_init();
+    bool record_data_init();
     void read_data_init();
     // tasks
     void test_service(bool on);
@@ -138,14 +145,19 @@ private:
     Vector12d state_l_;
     Vector12d state_r_;
 
+    std::vector<HAPTIC_TRIGGER> haptic_trigger_sequence_;
+    uint8_t haptic_trigger_idx_ = 0;
+
     double move_rate_;
 
     uint8_t task_num_;
     uint8_t tele_start_task_num_;
     uint8_t tele_quest_start_task_num_;
+    uint8_t end_task_num_;
 
     std::vector<uint8_t> marker_confidences_;
     double force_threshold_ = 20.0; // N
+    bool force_achieved_ = false;
 
     // recording data to vector buffer
     std::vector<PointData> recorded_trj_l_;
