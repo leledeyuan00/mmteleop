@@ -14,9 +14,9 @@ void MmteleopIMU::custom_init()
                            -0.6, 0.3,
                            -1.2, -0.4;
 
-    boundary_limit_r_   << 0.3, 0.8,
+    boundary_limit_r_   << 0.1, 0.8,
                            -0.3, 0.6,
-                           -1.2, -0.4;
+                           -1.2, -1.0;
     // imu sub
     imu_acc_l_buffer_.resize(30); // for 240 ms
     imu_ori_l_buffer_.resize(30);
@@ -203,42 +203,13 @@ void MmteleopIMU::tasks_init()
     task_pushback(TaskPtr("Go Home", [this](){
 
         std::vector<double> left_home_joints = {-0.607936, -0.629589, 2.334585, 2.176034, 0.730321, -2.129427};
-        std::vector<double> right_home_joints = {0.726628, -0.572950, 2.311294, -2.121640, 0.847345, 2.077871};
+        std::vector<double> right_home_joints = {0.189458, -0.401405, 2.181223, -0.010710, -1.739852, -0.209293};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
         }
     }));
 
-
-    // Go to the initial position
-    task_pushback(TaskPtr("Go to the initial position", [this](){
-
-        geometry_msgs::msg::PoseStamped left_hand_pose, right_hand_pose;
-        left_hand_pose = this->get_robot_state_l().start_pose;
-        right_hand_pose = this->get_robot_state_r().start_pose;
-
-        left_hand_pose.pose.position.x = 0.45;
-        left_hand_pose.pose.position.y = -0.15;
-        left_hand_pose.pose.position.z = -0.8;
-        left_hand_pose.pose.orientation.x = 0.0;
-        left_hand_pose.pose.orientation.y = 0.798917;
-        left_hand_pose.pose.orientation.z = 0.0;
-        left_hand_pose.pose.orientation.w = 0.601398;
-
-        right_hand_pose.pose.position.x = 0.45;
-        right_hand_pose.pose.position.y = 0.24;
-        right_hand_pose.pose.position.z = -0.8;
-        right_hand_pose.pose.orientation.x = 0.0;
-        right_hand_pose.pose.orientation.y = 0.798917;
-        right_hand_pose.pose.orientation.z = 0.0;
-        right_hand_pose.pose.orientation.w = 0.601398;
-
-        if(this->move(left_hand_pose, right_hand_pose, 5.0))
-        {
-            set_task_finished();
-        }
-    }));
 
     // Waiting until the start button is pressed
     tele_waiting_task_num_ = task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
@@ -708,7 +679,7 @@ void MmteleopIMU::tasks_init()
         if (haptics_l > 1.0) haptics_l = 1.0;
         std_msgs::msg::Float64MultiArray haptics_msg_l;
         haptics_msg_l.data.push_back(haptics_l);
-        haptics_pub_l_->publish(haptics_msg_l);
+        // haptics_pub_l_->publish(haptics_msg_l);
 
         double force_r = Eigen::Vector3d(robot_r.current_wrench.wrench.force.x, robot_r.current_wrench.wrench.force.y, robot_r.current_wrench.wrench.force.z).norm();
         double haptics_r = force_r > 2.0 ? force_r/(force_threshold_ - 2.0) : 0.0;
