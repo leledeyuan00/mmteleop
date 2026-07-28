@@ -143,9 +143,10 @@ private:
     uint8_t task_num_;
     uint8_t tele_start_task_num_;
     uint8_t tele_quest_start_task_num_;
+    uint8_t tele_waiting_task_num_;
 
     std::vector<uint8_t> marker_confidences_;
-    double force_threshold_ = 20.0; // N
+    double force_threshold_ = 30.0; // N
 
     // recording data to vector buffer
     std::vector<PointData> recorded_trj_l_;

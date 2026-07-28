@@ -202,16 +202,46 @@ void MmteleopIMU::tasks_init()
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.259797, -0.180369, 2.012831, -1.642967, 1.319282, 3.416804};
-        std::vector<double> right_home_joints = {0.059437, -0.132879, 1.972856, 1.583187, 1.507452, 2.896193};
+        std::vector<double> left_home_joints = {-0.607936, -0.629589, 2.334585, 2.176034, 0.730321, -2.129427};
+        std::vector<double> right_home_joints = {0.726628, -0.572950, 2.311294, -2.121640, 0.847345, 2.077871};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
         }
     }));
 
+
+    // Go to the initial position
+    task_pushback(TaskPtr("Go to the initial position", [this](){
+
+        geometry_msgs::msg::PoseStamped left_hand_pose, right_hand_pose;
+        left_hand_pose = this->get_robot_state_l().start_pose;
+        right_hand_pose = this->get_robot_state_r().start_pose;
+
+        left_hand_pose.pose.position.x = 0.45;
+        left_hand_pose.pose.position.y = -0.15;
+        left_hand_pose.pose.position.z = -0.8;
+        left_hand_pose.pose.orientation.x = 0.0;
+        left_hand_pose.pose.orientation.y = 0.798917;
+        left_hand_pose.pose.orientation.z = 0.0;
+        left_hand_pose.pose.orientation.w = 0.601398;
+
+        right_hand_pose.pose.position.x = 0.45;
+        right_hand_pose.pose.position.y = 0.24;
+        right_hand_pose.pose.position.z = -0.8;
+        right_hand_pose.pose.orientation.x = 0.0;
+        right_hand_pose.pose.orientation.y = 0.798917;
+        right_hand_pose.pose.orientation.z = 0.0;
+        right_hand_pose.pose.orientation.w = 0.601398;
+
+        if(this->move(left_hand_pose, right_hand_pose, 5.0))
+        {
+            set_task_finished();
+        }
+    }));
+
     // Waiting until the start button is pressed
-    task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
+    tele_waiting_task_num_ = task_pushback(TaskPtr("Waiting until the start button is pressed", [this](){
         if (teleop_start_)
         {
             #ifndef USE_QUEST_ONLY
@@ -219,7 +249,30 @@ void MmteleopIMU::tasks_init()
             set_task_finished();
             teleop_start_ = false; // reset teleop start flag
             #else
-            goto_specific_task(tele_quest_start_task_num_);
+            // see if the Quest controller is in the correct position
+            std::string quest_frame = "oculus_base";
+            auto right_hand_transform_quest = buffer_.lookupTransform(quest_frame, "oculus_r", tf2::TimePointZero);
+            auto left_hand_transform_quest  = buffer_.lookupTransform(quest_frame, "oculus_l", tf2::TimePointZero);
+            auto right_hand_quest = tf2::transformToEigen(right_hand_transform_quest);
+            auto left_hand_quest  = tf2::transformToEigen(left_hand_transform_quest);
+            // Initialize the start position
+
+            Eigen::Vector3d hand_pose_l = right_hand_quest.translation();
+            Eigen::Vector3d hand_pose_r = right_hand_quest.translation();
+            double distance_square = 1.5; // meter square
+            RCLCPP_INFO(this->get_logger(), "Left hand start pose: [%f, %f, %f]", hand_pose_l(0), hand_pose_l(1), hand_pose_l(2));
+            RCLCPP_INFO(this->get_logger(), "Right hand start pose: [%f, %f, %f]", hand_pose_r(0), hand_pose_r(1), hand_pose_r(2));
+            if (hand_pose_l.norm() > distance_square || hand_pose_r.norm() > distance_square)
+            {
+                RCLCPP_WARN(this->get_logger(), "Quest controller is lost. Please push two Quest controller gripper buttons. Then start again.");
+                teleop_start_ = false; // reset teleop start flag
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "Quest controller is in the correct position, start teleop");
+                goto_specific_task(tele_quest_start_task_num_);
+            }
+
             #endif
         }
     }));
