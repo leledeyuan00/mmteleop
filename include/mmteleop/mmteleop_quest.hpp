@@ -9,6 +9,7 @@
 #include <ctime>
 #include <fstream>
 #include <thread>
+#include <random>
 
 // ros
 #include <std_msgs/msg/int8.hpp>
@@ -96,6 +97,10 @@ private:
     // ros time
     rclcpp::Clock ros_clock_;
     rclcpp::Time start_time_;
+
+    // initial pose
+    geometry_msgs::msg::PoseStamped left_initial_pose_;
+    geometry_msgs::msg::PoseStamped right_initial_pose_;
 
     // robot transform matrix
     sensor_msgs::msg::Imu imu_msg_l_;

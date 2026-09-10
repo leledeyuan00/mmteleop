@@ -199,11 +199,55 @@ void MmteleopIMU::emergenccy_detection()
 void MmteleopIMU::tasks_init()
 {
 
+    // release the force control and go to the initial position
+    task_pushback(TaskPtr("Release the force control and go to the initial position",
+    [this](){
+        geometry_msgs::msg::PoseStamped left_target_pose, right_target_pose;
+        left_target_pose = this->get_robot_state_l().start_pose;
+        right_target_pose = this->get_robot_state_r().start_pose;
+        if(this->move(left_target_pose, right_target_pose, 1.0))
+        {
+            set_task_finished();
+        }
+    }));
+
+    // Leave two manipulators away from each other
+    task_pushback(TaskPtr("Leave two manipulators away from each other", [this](){
+        left_initial_pose_ = this->get_robot_state_l().target_monitor;
+        right_initial_pose_ = this->get_robot_state_r().target_monitor;
+    },
+    [this](){
+
+        Eigen::Vector3d left_eef_pos = Eigen::Vector3d(left_initial_pose_.pose.position.x, left_initial_pose_.pose.position.y, left_initial_pose_.pose.position.z);
+        Eigen::Vector3d right_eef_pos = Eigen::Vector3d(right_initial_pose_.pose.position.x, right_initial_pose_.pose.position.y, right_initial_pose_.pose.position.z);
+        Eigen::Vector3d distance_norm = (right_eef_pos - left_eef_pos).normalized();
+
+        Eigen::Vector3d left_target_pos = left_eef_pos - distance_norm * 0.02;
+        Eigen::Vector3d right_target_pos = right_eef_pos + distance_norm * 0.02;
+
+        geometry_msgs::msg::PoseStamped left_target_pose, right_target_pose;
+        left_target_pose = left_initial_pose_;
+        right_target_pose = right_initial_pose_;
+
+        left_target_pose.pose.position.x = left_target_pos(0);
+        left_target_pose.pose.position.y = left_target_pos(1);
+        left_target_pose.pose.position.z = left_target_pos(2);
+
+        right_target_pose.pose.position.x = right_target_pos(0);
+        right_target_pose.pose.position.y = right_target_pos(1);
+        right_target_pose.pose.position.z = right_target_pos(2);
+
+        if(this->move(left_target_pose, right_target_pose, 2.0))
+        {
+            set_task_finished();
+        }
+    }));
+
     // Go Home
     task_pushback(TaskPtr("Go Home", [this](){
 
-        std::vector<double> left_home_joints = {-0.607936, -0.629589, 2.334585, 2.176034, 0.730321, -2.129427};
-        std::vector<double> right_home_joints = {0.726628, -0.572950, 2.311294, -2.121640, 0.847345, 2.077871};
+        std::vector<double> left_home_joints = {-0.369624, -0.034632, 1.676058, 1.546698, -1.214689, -1.493617};
+        std::vector<double> right_home_joints = {0.235998, -0.104174, 1.737613, -1.558826, -1.327168, 1.498374};
 
         if(joint_move(left_home_joints, right_home_joints, 5.0)){
             set_task_finished();
@@ -212,31 +256,52 @@ void MmteleopIMU::tasks_init()
 
 
     // Go to the initial position
-    task_pushback(TaskPtr("Go to the initial position", [this](){
+    task_pushback(TaskPtr("Go to the initial position",[this](){
+        // Generate the random initial position for the left arm
+        // Initialize the random generator
+        std::random_device rd;
+        std::mt19937 gen(rd());
 
-        geometry_msgs::msg::PoseStamped left_hand_pose, right_hand_pose;
-        left_hand_pose = this->get_robot_state_l().start_pose;
-        right_hand_pose = this->get_robot_state_r().start_pose;
+        // position distribution
+        std::uniform_real_distribution<double> pos_dist_x(-0.01, 0.01);
+        std::uniform_real_distribution<double> pos_dist_y(-0.01, 0.01);
+        std::uniform_real_distribution<double> pos_dist_z(-0.03, -0.03);
 
-        left_hand_pose.pose.position.x = 0.45;
-        left_hand_pose.pose.position.y = -0.15;
-        left_hand_pose.pose.position.z = -0.8;
-        left_hand_pose.pose.orientation.x = 0.0;
-        left_hand_pose.pose.orientation.y = 0.798917;
-        left_hand_pose.pose.orientation.z = 0.0;
-        left_hand_pose.pose.orientation.w = 0.601398;
+        // orientation distribution [degrees]
+        std::uniform_real_distribution<double> ori_dist_x(-10, 10);
+        std::uniform_real_distribution<double> ori_dist_y(-10, 10);
+        std::uniform_real_distribution<double> ori_dist_z(-10, 10);
+        
 
-        right_hand_pose.pose.position.x = 0.45;
-        right_hand_pose.pose.position.y = 0.24;
-        right_hand_pose.pose.position.z = -0.8;
-        right_hand_pose.pose.orientation.x = 0.0;
-        right_hand_pose.pose.orientation.y = 0.798917;
-        right_hand_pose.pose.orientation.z = 0.0;
-        right_hand_pose.pose.orientation.w = 0.601398;
+        left_initial_pose_ = this->get_robot_state_l().start_pose;
+        right_initial_pose_ = this->get_robot_state_r().start_pose;
 
-        if(this->move(left_hand_pose, right_hand_pose, 5.0))
+        left_initial_pose_.pose.position.x = 0.476479 + pos_dist_x(gen);
+        left_initial_pose_.pose.position.y = -0.038268 + pos_dist_y(gen);
+        left_initial_pose_.pose.position.z =  -0.831157 + pos_dist_z(gen);
+
+        Eigen::AngleAxisd rotation_x(ori_dist_x(gen) * M_PI / 180.0, Eigen::Vector3d::UnitX());
+        Eigen::AngleAxisd rotation_y(ori_dist_y(gen) * M_PI / 180.0, Eigen::Vector3d::UnitY());
+        Eigen::AngleAxisd rotation_z(ori_dist_z(gen) * M_PI / 180.0, Eigen::Vector3d::UnitZ());
+        Eigen::Quaterniond random_rotation = rotation_z * rotation_y * rotation_x;
+        Eigen::Quaterniond initial_orientation(0.5, -0.5, 0.5, 0.5);
+        Eigen::Quaterniond final_orientation = random_rotation * initial_orientation;
+        left_initial_pose_.pose.orientation = tf2::toMsg(final_orientation);
+
+        // Fix the right hand pose
+        right_initial_pose_.pose.position.x = 0.466051;
+        right_initial_pose_.pose.position.y = 0.103459;
+        right_initial_pose_.pose.position.z = -0.833544;
+        right_initial_pose_.pose.orientation.x = 0.5;
+        right_initial_pose_.pose.orientation.y = 0.5;
+        right_initial_pose_.pose.orientation.z =  -0.5;
+        right_initial_pose_.pose.orientation.w = 0.5;
+    }, 
+    [this]()
+    {
+        if(this->move(left_initial_pose_, right_initial_pose_, 5.0))
         {
-            set_task_finished();
+            this->goto_last_task(); // used for policy evaluation
         }
     }));
 
@@ -722,7 +787,7 @@ void MmteleopIMU::tasks_init()
         emergenccy_detection();
         if (!emergency_stop_)
         {
-            set_target_pose_l(target_pose_l);
+            // set_target_pose_l(target_pose_l);
             set_target_pose_r(target_pose_r);
         }        
         
