@@ -103,6 +103,16 @@ target_include_directories(mmteleop_quest PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_executable(mmteleop_quest_customized
+src/mmteleop_quest_customized.cpp
+src/kalman_filter.cpp
+)
+ament_target_dependencies(mmteleop_quest_customized ${THIS_PACKAGE_INCLUDE_DEPENDS})
+target_include_directories(mmteleop_quest_customized PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 
 install(TARGETS
   mmteleop
@@ -113,6 +123,7 @@ install(TARGETS
   body_record
   mmteleop_imu
   mmteleop_quest
+  mmteleop_quest_customized
   DESTINATION lib/${PROJECT_NAME}
 )
 

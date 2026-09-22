@@ -1,7 +1,11 @@
-#include "mmteleop/mmteleop_quest.hpp" 
+#include "mmteleop/mmteleop_quest_customized.hpp" 
 // OC Demo 2025
 
 using namespace std::chrono_literals;
+
+//low-pass alpha of the Quest teleop task. Named here because the resume path
+//has to rebuild the filter with the same setting the task entry used.
+static constexpr double kQuestLowPassAlpha = 0.2;
 
 namespace garment_research
 {
@@ -14,8 +18,8 @@ void MmteleopIMU::custom_init()
                            -0.6, 0.3,
                            -1.2, -0.4;
 
-    boundary_limit_r_   << 0.3, 0.8,
-                           -0.3, 0.6,
+    boundary_limit_r_   << 0.3, 1.2,
+                           -0.6, 1.2,
                            -1.2, -0.4;
     // imu sub
     imu_acc_l_buffer_.resize(30); // for 240 ms
@@ -91,6 +95,24 @@ void MmteleopIMU::custom_init()
                 RCLCPP_INFO(this->get_logger(), "Teleop service is trying to stop");
             }
             
+        });
+
+    // clutch. Trigger toggles rather than setting a value, so the caller and 
+    // this node cannot end-up disagree-ng about the current state.
+    pause_srv_l_ = this->create_service<std_srvs::srv::Trigger>(
+        "/teleop_pause_left", [this](const std_srvs::srv::Trigger::Request::SharedPtr,
+                                     std_srvs::srv::Trigger::Response::SharedPtr response) {
+            paused_l_ = !paused_l_;
+            response->success = true;
+            response->message = paused_l_ ? "left arm paused" : "left arm resumed";
+        });
+
+    pause_srv_r_ = this->create_service<std_srvs::srv::Trigger>(
+        "/teleop_pause_right", [this](const std_srvs::srv::Trigger::Request::SharedPtr,
+                                     std_srvs::srv::Trigger::Response::SharedPtr response) {
+            paused_r_ = !paused_r_;
+            response->success = true;
+            response->message = paused_r_ ? "right arm paused" : "right arm resumed";
         });
 
     // Initialize tf
@@ -548,9 +570,19 @@ void MmteleopIMU::tasks_init()
         hand_ori_start_r_ = Eigen::Quaterniond(body_right_hand_quest_.rotation());
 
         // low pass filter
-        Eigen::Vector3d alpha(0.2, 0.2, 0.2);
+        Eigen::Vector3d alpha = Eigen::Vector3d::Constant(kQuestLowPassAlpha);
         low_pass_filter_ptr_l_.reset(new LowPassFilter(alpha));
         low_pass_filter_ptr_r_.reset(new LowPassFilter(alpha));
+
+        // clutch: start from the pose the task begins at, and start unpaused
+        base_pose_l_ = get_robot_state_l().start_pose;
+        base_pose_r_ = get_robot_state_r().start_pose;
+        last_target_l_ = base_pose_l_;
+        last_target_r_ = base_pose_r_;
+        paused_l_ = false;
+        paused_r_ = false;
+        prev_paused_l_ = false;
+        prev_paused_r_ = false;
 
         // refresh recorded buffers
         recorded_trj_l_.clear();
@@ -566,6 +598,52 @@ void MmteleopIMU::tasks_init()
         Eigen::Vector3d zero_3d = Eigen::Vector3d::Zero();
         // Update tf
         tf_update();
+
+        // --- clutch ---
+        // Oh resume, re-base both sides" the hand pose the increment is measured
+        // from, and the robot pose the increment is added to. Re-basing only the 
+        // hand would send the arm back to where teleop started. The low pass
+        // filter still holds the values from before the pause, so it is rebuilt.
+        if (paused_l_ != prev_paused_l_)
+        {
+            if (!paused_l_)
+            {
+                hand_pose_start_l_ = body_left_hand_quest_.translation();
+                hand_ori_start_l_ = Eigen::Quaterniond(body_left_hand_quest_.rotation());
+                base_pose_l_ = last_target_l_;
+                low_pass_filter_ptr_l_.reset(
+                    new LowPassFilter(Eigen::Vector3d::Constant(kQuestLowPassAlpha)));
+                RCLCPP_INFO(this->get_logger(), "Left arm resumed");
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "Left arm paused");
+            }
+            prev_paused_l_ = paused_l_;
+        }
+
+        if (paused_r_ != prev_paused_r_)
+        {
+            if (!paused_r_)
+            {
+                hand_pose_start_r_ = body_right_hand_quest_.translation();
+                hand_ori_start_r_ = Eigen::Quaterniond(body_right_hand_quest_.rotation());
+                base_pose_r_ = last_target_r_;
+                low_pass_filter_ptr_r_.reset(
+                    new LowPassFilter(Eigen::Vector3d::Constant(kQuestLowPassAlpha)));
+                RCLCPP_INFO(this->get_logger(), "Right arm resumed");
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "Right arm paused");
+            }
+            prev_paused_r_ = paused_r_;
+        }
+
+        // Everything below measures the increment from start_pose. Point it at
+        // the clutch base instead, so a resume continues from where the arm is.
+        robot_l.start_pose = base_pose_l_;
+        robot_r.start_pose = base_pose_r_;
 
         // Move Rate
         double elapsed_time = get_system_state().current_time.seconds() + 
@@ -694,10 +772,22 @@ void MmteleopIMU::tasks_init()
         emergenccy_detection();
         if (!emergency_stop_)
         {
-            set_target_pose_l(target_pose_l);
-            set_target_pose_r(target_pose_r);
-        }        
+            // A paused arm simply stops receiving targets. The controller holds
+            // the last one, so the arm stays where it is while the hand moves on.
+            if (!paused_l_)
+            {
+                set_target_pose_l(target_pose_l);
+                last_target_l_ = target_pose_l;
+            }
+            if (!paused_r_)
+            {
+                set_target_pose_r(target_pose_r);
+                last_target_r_ = target_pose_r;
+            }
+        }
+
         
+
         // record data
         {
             auto system_state = get_system_state();
