@@ -87,8 +87,11 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr haptics_pub_r_;
 
     // srvs
-    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr teleop_srv_;
-    bool teleop_start_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr system_reset_service_;
+    bool system_reset_{false};
+
+    // clients
+    GarmentClient<std_srvs::srv::SetBool>::SharedPtr eval_client_; // evaluation client
 
     // tf   
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
